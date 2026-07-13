@@ -109,18 +109,9 @@ def get_base_rate(df, tenure_map, age, tenure_years):
 
 
 def apply_loading(base_rate, loading_pct):
-    """Loading % is applied on the BASE rate, before GST."""
+    """Loading % is applied on the sheet rate. GST is already included in the
+    sheet's rate, so this loaded value IS the final rate — no further math needed."""
     return base_rate * (1 + (loading_pct / 100.0))
-
-
-def compute_rate_breakup(loaded_rate):
-    """Rate table stores GROSS rate (per Rs 1,00,000 SA), inclusive of GST.
-    Loaded rate already includes the loading %.
-    Returns (net_rate, gst_rate, gross_rate) — all per Rs 1,00,000 SA."""
-    gross_rate = loaded_rate
-    net_rate = gross_rate / (1 + GST_RATE)
-    gst_rate = gross_rate - net_rate
-    return round(net_rate, 4), round(gst_rate, 4), round(gross_rate, 4)
 
 
 # ============================================
@@ -199,29 +190,15 @@ if st.button("Get Rate", type="primary", use_container_width=True):
     try:
         df_rates, tenure_map = load_rate_table(segment, life_type)
         base_rate = get_base_rate(df_rates, tenure_map, age, tenure)
-        loaded_rate = apply_loading(base_rate, loading_pct)
-        net_rate, gst_rate, gross_rate = compute_rate_breakup(loaded_rate)
+        rate = apply_loading(base_rate, loading_pct)
 
         st.success(
             f"✅ {segment} | {life_type} Life | Age {age} | Tenure {tenure} yrs | "
             f"Loading {loading_pct}%"
         )
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric("Base Rate", f"{base_rate:,.4f}")
-        with col_b:
-            st.metric("Loaded Rate", f"{loaded_rate:,.4f}")
-
-        col_c, col_d, col_e = st.columns(3)
-        with col_c:
-            st.metric("Net Rate (excl. GST)", f"{net_rate:,.4f}")
-        with col_d:
-            st.metric("GST (18%)", f"{gst_rate:,.4f}")
-        with col_e:
-            st.metric("Gross Rate", f"{gross_rate:,.4f}")
-
-        st.caption("Rates shown are per ₹1,00,000 Sum Assured.")
+        st.metric("Rate", f"{rate:,.4f}")
+        st.caption("Rate is per ₹1,00,000 Sum Assured, GST already included.")
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -261,17 +238,12 @@ if st.button("Generate Rate Table", type="primary", use_container_width=True):
             for tenure_v in valid_tenure_years:
                 try:
                     base_rate = get_base_rate(df_rates, tenure_map, age_v, tenure_v)
-                    loaded_rate = apply_loading(base_rate, loading_pct)
-                    net_rate, gst_rate, gross_rate = compute_rate_breakup(loaded_rate)
+                    rate = apply_loading(base_rate, loading_pct)
                     rows.append({
                         "Age": age_v,
                         "Tenure (Yrs)": tenure_v,
-                        "Base Rate": round(base_rate, 4),
                         "Loading %": loading_pct,
-                        "Loaded Rate": round(loaded_rate, 4),
-                        "Net Rate": net_rate,
-                        "GST Rate": gst_rate,
-                        "Gross Rate": gross_rate,
+                        "Rate": round(rate, 4),
                     })
                 except Exception:
                     continue
