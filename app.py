@@ -113,34 +113,14 @@ def apply_loading(base_rate, loading_pct):
     return base_rate * (1 + (loading_pct / 100.0))
 
 
-def compute_premium_breakup(loaded_rate, sum_assured):
-    """Rate table stores GROSS premium rate (per Rs 1,00,000 SA).
+def compute_rate_breakup(loaded_rate):
+    """Rate table stores GROSS rate (per Rs 1,00,000 SA), inclusive of GST.
     Loaded rate already includes the loading %.
-    Returns (net_premium, gst_amount, gross_premium)."""
-    gross_premium = loaded_rate * (sum_assured / 100000)
-    net_premium = gross_premium / (1 + GST_RATE)
-    gst_amount = gross_premium - net_premium
-    return round(net_premium, 2), round(gst_amount, 2), round(gross_premium, 2)
-
-
-def find_column(df, target):
-    """Exact (case/space-insensitive) match."""
-    target_norm = target.strip().lower().replace(" ", "")
-    for col in df.columns:
-        col_norm = str(col).strip().lower().replace(" ", "")
-        if col_norm == target_norm:
-            return col
-    return None
-
-
-def find_flexible_column(df, keywords):
-    """Flexible detection — matches if any keyword (normalized) appears in the column name."""
-    for col in df.columns:
-        norm = re.sub(r'[\s_-]+', '', str(col).lower())
-        for kw in keywords:
-            if kw in norm:
-                return col
-    return None
+    Returns (net_rate, gst_rate, gross_rate) — all per Rs 1,00,000 SA."""
+    gross_rate = loaded_rate
+    net_rate = gross_rate / (1 + GST_RATE)
+    gst_rate = gross_rate - net_rate
+    return round(net_rate, 4), round(gst_rate, 4), round(gross_rate, 4)
 
 
 # ============================================
@@ -162,34 +142,7 @@ with col3:
     )
 
 limits = SEGMENT_LIMITS[segment]
-sa_min, sa_max = limits["sa_min"], limits["sa_max"]
 min_tenure, max_tenure = limits["t_min"], limits["t_max"]
-
-# ============================================
-# SUM ASSURED (mandatory)
-# ============================================
-sum_assured_input = st.number_input(
-    "Select Sum Assured (₹)",
-    min_value=0,
-    value=sa_min,
-    step=10000,
-    help=f"For {segment}, Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}."
-)
-
-if sum_assured_input < sa_min:
-    st.warning(
-        f"⚠️ Minimum Sum Assured for {segment} is ₹{sa_min:,}. "
-        f"Value adjusted to ₹{sa_min:,}."
-    )
-    sum_assured = sa_min
-elif sum_assured_input > sa_max:
-    st.warning(
-        f"⚠️ Maximum Sum Assured for {segment} is ₹{sa_max:,}. "
-        f"Value adjusted to ₹{sa_max:,}."
-    )
-    sum_assured = sa_max
-else:
-    sum_assured = sum_assured_input
 
 st.divider()
 
@@ -247,11 +200,11 @@ if st.button("Get Rate", type="primary", use_container_width=True):
         df_rates, tenure_map = load_rate_table(segment, life_type)
         base_rate = get_base_rate(df_rates, tenure_map, age, tenure)
         loaded_rate = apply_loading(base_rate, loading_pct)
-        net_premium, gst_amount, gross_premium = compute_premium_breakup(loaded_rate, sum_assured)
+        net_rate, gst_rate, gross_rate = compute_rate_breakup(loaded_rate)
 
         st.success(
             f"✅ {segment} | {life_type} Life | Age {age} | Tenure {tenure} yrs | "
-            f"Loading {loading_pct}% | Sum Assured ₹{sum_assured:,}"
+            f"Loading {loading_pct}%"
         )
 
         col_a, col_b = st.columns(2)
@@ -262,193 +215,81 @@ if st.button("Get Rate", type="primary", use_container_width=True):
 
         col_c, col_d, col_e = st.columns(3)
         with col_c:
-            st.metric("Net Premium (excl. GST)", f"₹ {net_premium:,.2f}")
+            st.metric("Net Rate (excl. GST)", f"{net_rate:,.4f}")
         with col_d:
-            st.metric("GST (18%)", f"₹ {gst_amount:,.2f}")
+            st.metric("GST (18%)", f"{gst_rate:,.4f}")
         with col_e:
-            st.metric("Gross Premium", f"₹ {gross_premium:,.2f}")
+            st.metric("Gross Rate", f"{gross_rate:,.4f}")
+
+        st.caption("Rates shown are per ₹1,00,000 Sum Assured.")
     except Exception as e:
         st.error(f"Error: {e}")
 
 st.divider()
 
 # ============================================
-# EXCEL UPLOAD SECTION
+# FULL LOADED RATE TABLE — GENERATE & DOWNLOAD
+# (No upload needed — built entirely from the selections above)
 # ============================================
-st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
+st.subheader("📊 Generate Full Loaded Rate Table")
 
 st.markdown(
-    "Your Excel must have at least: Sum Assured, Age, Tenure (in years). "
-    "Any other columns you include will be carried through to the output unchanged."
+    f"This builds the complete rate table (every Age × Tenure combination) for "
+    f"**{segment} | {life_type} Life | Loading {loading_pct}%**, with GST applied, "
+    f"ready to download."
 )
 
-st.warning(
-    "⚠️ Please make sure you have selected **Type of Life**, **Segment**, and "
-    "**Loading %** above before uploading your Excel file. These apply to every row."
-)
-
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
-
-if uploaded_file is not None:
+if st.button("Generate Rate Table", type="primary", use_container_width=True):
     try:
-        df = pd.read_excel(uploaded_file)
-        df.columns = [str(c).strip() for c in df.columns]
-
-        st.subheader("Uploaded Data Preview")
-        st.dataframe(df.head())
-
         df_rates, tenure_map = load_rate_table(segment, life_type)
 
-        age_col = find_column(df, "Age") or find_flexible_column(df, ["age"])
-        tenure_col = find_column(df, "Tenure") or find_flexible_column(df, ["tenure"])
-        sa_col = (
-            find_column(df, "Sum Assured")
-            or find_flexible_column(df, ["sumassured", "suminsured", "loanamount"])
-        )
+        # Ages: only those present in the sheet AND within the allowed 18-60 range
+        valid_ages = sorted(a for a in df_rates.index if AGE_MIN <= a <= AGE_MAX)
 
-        missing = []
-        if not age_col:
-            missing.append("Age")
-        if not tenure_col:
-            missing.append("Tenure")
-        if not sa_col:
-            missing.append("Sum Assured")
-        if missing:
-            raise ValueError("Excel must contain mandatory columns: " + ", ".join(missing))
-
-        df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
-        df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
-        df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
-
-        if df[tenure_col].dropna().median() > 30:
-            st.info("ℹ️ Tenure values look like months — auto-converting to years.")
-            df[tenure_col] = (df[tenure_col] / 12).round(0).astype('Int64')
-        else:
-            df[tenure_col] = df[tenure_col].round(0).astype('Int64')
-
-        df[age_col] = df[age_col].round(0).astype('Int64')
-
-        # ---- AGE VALIDATION (18-60) — NO CLIPPING, ROWS ARE LEFT BLANK ----
-        age_invalid_mask = (df[age_col] < AGE_MIN) | (df[age_col] > AGE_MAX) | df[age_col].isna()
-        age_invalid_count = int(age_invalid_mask.sum())
-        if age_invalid_count > 0:
-            st.warning(
-                f"⚠️ {age_invalid_count} row(s) have Age outside the allowed range "
-                f"({AGE_MIN}-{AGE_MAX} years). Premiums will not be calculated for these rows."
-            )
-
-        # ---- TENURE VALIDATION — NO CLIPPING, ROWS ARE LEFT BLANK ----
-        tenure_invalid_mask = (df[tenure_col] < min_tenure) | (df[tenure_col] > max_tenure) | df[tenure_col].isna()
-        tenure_invalid_count = int(tenure_invalid_mask.sum())
-        if tenure_invalid_count > 0:
-            st.warning(
-                f"⚠️ {tenure_invalid_count} row(s) have Tenure outside the allowed range "
-                f"({min_tenure}-{max_tenure} yrs for {segment}). Premiums will not be calculated for these rows."
-            )
-
-        df[sa_col] = df[sa_col].fillna(sum_assured)
-        sa_out_of_range = ((df[sa_col] < sa_min) | (df[sa_col] > sa_max)).sum()
-        if sa_out_of_range > 0:
-            st.warning(
-                f"⚠️ {sa_out_of_range} row(s) had Sum Assured outside the allowed range "
-                f"(₹{sa_min:,}-₹{sa_max:,} for {segment}) and were adjusted to the nearest limit."
-            )
-        df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
-
-        base_rate_list, loaded_rate_list = [], []
-        net_list, gst_list, gross_list, status_list = [], [], [], []
-        for idx, row in df.iterrows():
-            try:
-                r_age_raw = row[age_col]
-                r_tenure_raw = row[tenure_col]
-
-                # Blank out rows with missing / out-of-range age
-                if pd.isna(r_age_raw) or r_age_raw < AGE_MIN or r_age_raw > AGE_MAX:
-                    base_rate_list.append(None)
-                    loaded_rate_list.append(None)
-                    net_list.append(None)
-                    gst_list.append(None)
-                    gross_list.append(None)
-                    status_list.append(f"❌ Age must be between {AGE_MIN} and {AGE_MAX}")
-                    continue
-
-                # Blank out rows with missing / out-of-range tenure
-                if pd.isna(r_tenure_raw) or r_tenure_raw < min_tenure or r_tenure_raw > max_tenure:
-                    base_rate_list.append(None)
-                    loaded_rate_list.append(None)
-                    net_list.append(None)
-                    gst_list.append(None)
-                    gross_list.append(None)
-                    status_list.append(f"❌ Tenure must be between {min_tenure} and {max_tenure} yrs")
-                    continue
-
-                r_age = int(r_age_raw)
-                r_tenure = int(r_tenure_raw)
-                r_sa = float(row[sa_col])
-
-                base_rate = get_base_rate(df_rates, tenure_map, r_age, r_tenure)
-                loaded_rate = apply_loading(base_rate, loading_pct)
-                net_p, gst_a, gross_p = compute_premium_breakup(loaded_rate, r_sa)
-
-                base_rate_list.append(round(base_rate, 4))
-                loaded_rate_list.append(round(loaded_rate, 4))
-                net_list.append(net_p)
-                gst_list.append(gst_a)
-                gross_list.append(gross_p)
-                status_list.append("✅")
-
-            except Exception as e:
-                base_rate_list.append(None)
-                loaded_rate_list.append(None)
-                net_list.append(None)
-                gst_list.append(None)
-                gross_list.append(None)
-                status_list.append(f"❌ {e}")
-
-        df["Base Rate"] = base_rate_list
-        df["Loading %"] = loading_pct
-        df["Loaded Rate"] = loaded_rate_list
-        df["Net Premium"] = net_list
-        df["GST Amount"] = gst_list
-        df["Gross Premium"] = gross_list
-        df["Status"] = status_list
-
-        core_cols = [
-            sa_col, age_col, tenure_col,
-            "Base Rate", "Loading %", "Loaded Rate",
-            "Net Premium", "GST Amount", "Gross Premium", "Status"
+        # Tenures: only those present in the sheet AND within the segment's allowed range
+        valid_tenure_years = sorted({int(round(months / 12)) for months in tenure_map.keys()})
+        valid_tenure_years = [
+            yr for yr in valid_tenure_years
+            if min_tenure <= yr <= max_tenure and int(round(yr * 12)) in tenure_map
         ]
-        extra_cols = [c for c in df.columns if c not in core_cols]
-        df_out = df[core_cols + extra_cols]
 
-        total_net = pd.to_numeric(pd.Series(net_list), errors='coerce').sum()
-        total_gst = pd.to_numeric(pd.Series(gst_list), errors='coerce').sum()
-        total_gross = pd.to_numeric(pd.Series(gross_list), errors='coerce').sum()
+        if not valid_ages or not valid_tenure_years:
+            raise ValueError("No valid Age/Tenure combinations found within the allowed limits.")
 
-        col_x, col_y, col_z = st.columns(3)
-        with col_x:
-            st.metric("💰 Total Net Premium", f"₹ {total_net:,.2f}")
-        with col_y:
-            st.metric("💰 Total GST", f"₹ {total_gst:,.2f}")
-        with col_z:
-            st.metric("💰 Total Gross Premium", f"₹ {total_gross:,.2f}")
+        rows = []
+        for age_v in valid_ages:
+            for tenure_v in valid_tenure_years:
+                try:
+                    base_rate = get_base_rate(df_rates, tenure_map, age_v, tenure_v)
+                    loaded_rate = apply_loading(base_rate, loading_pct)
+                    net_rate, gst_rate, gross_rate = compute_rate_breakup(loaded_rate)
+                    rows.append({
+                        "Age": age_v,
+                        "Tenure (Yrs)": tenure_v,
+                        "Base Rate": round(base_rate, 4),
+                        "Loading %": loading_pct,
+                        "Loaded Rate": round(loaded_rate, 4),
+                        "Net Rate": net_rate,
+                        "GST Rate": gst_rate,
+                        "Gross Rate": gross_rate,
+                    })
+                except Exception:
+                    continue
 
-        st.subheader("Rate Lookup Output")
-        st.dataframe(df_out, use_container_width=True)
+        df_table = pd.DataFrame(rows)
 
-        total_row = {c: "" for c in df_out.columns}
-        total_row[sa_col] = "TOTAL"
-        total_row["Net Premium"] = round(total_net, 2)
-        total_row["GST Amount"] = round(total_gst, 2)
-        total_row["Gross Premium"] = round(total_gross, 2)
-        df_final = pd.concat([df_out, pd.DataFrame([total_row])], ignore_index=True)
+        st.success(
+            f"✅ Generated {len(df_table)} rate combinations for "
+            f"{segment} | {life_type} Life | Loading {loading_pct}%."
+        )
+        st.dataframe(df_table, use_container_width=True)
 
-        output_file = "Rate_Output.xlsx"
-        df_final.to_excel(output_file, index=False)
+        output_file = "Loaded_Rate_Table.xlsx"
+        df_table.to_excel(output_file, index=False)
 
         with open(output_file, "rb") as file:
             st.download_button(
-                label="⬇ Download Output Excel",
+                label="⬇ Download Rate Table Excel",
                 data=file,
                 file_name=output_file,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
