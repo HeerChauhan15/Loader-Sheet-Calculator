@@ -38,6 +38,12 @@ FILE_MAP = {
     ("Loan Against Property", "Joint"): "LAP Joint Life.xlsx",
 }
 
+# Short token used to build the download filename, e.g. "single_homeloan.xlsx"
+SEGMENT_FILE_TOKEN = {
+    "Home Loan": "homeloan",
+    "Loan Against Property": "lap",
+}
+
 # ============================================
 # SUM ASSURED & TENURE LIMITS PER SEGMENT
 # (same limits used for Single and Joint life)
@@ -197,7 +203,7 @@ if st.button("Get Rate", type="primary", use_container_width=True):
             f"Loading {loading_pct}%"
         )
 
-        st.metric("Rate", f"{rate:,.4f}")
+        st.metric("Rate", f"{rate:,.2f}")
         st.caption("Rate is per ₹1,00,000 Sum Assured, GST already included.")
     except Exception as e:
         st.error(f"Error: {e}")
@@ -243,7 +249,7 @@ if st.button("Generate Rate Table", type="primary", use_container_width=True):
                         "Age": age_v,
                         "Tenure (Yrs)": tenure_v,
                         "Loading %": loading_pct,
-                        "Rate": round(rate, 4),
+                        "Rate": round(rate, 2),
                     })
                 except Exception:
                     continue
@@ -256,8 +262,19 @@ if st.button("Generate Rate Table", type="primary", use_container_width=True):
         )
         st.dataframe(df_table, use_container_width=True)
 
-        output_file = "Loaded_Rate_Table.xlsx"
-        df_table.to_excel(output_file, index=False)
+        # ---- Build the DOWNLOAD file in the original backend format ----
+        # Pivot: Age as rows, Tenure (years) as columns, Rate as values.
+        # Loading % is NOT included as a column in the downloaded file.
+        df_pivot = df_table.pivot(index="Age", columns="Tenure (Yrs)", values="Rate")
+        df_pivot = df_pivot.round(2)
+        df_pivot = df_pivot.reset_index()
+        df_pivot.columns.name = None
+        df_pivot = df_pivot.rename(columns={"Age": "AGE/TERM"})
+
+        segment_token = SEGMENT_FILE_TOKEN[segment]
+        life_token = life_type.lower()
+        output_file = f"{life_token}_{segment_token}.xlsx"
+        df_pivot.to_excel(output_file, index=False)
 
         with open(output_file, "rb") as file:
             st.download_button(
