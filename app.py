@@ -16,12 +16,6 @@ st.markdown("Select Type of Life, Segment, and Loading % below")
 GST_RATE = 0.18
 
 # ============================================
-# AGE LIMITS (ALL SEGMENTS / LIFE TYPES)
-# ============================================
-AGE_MIN = 18
-AGE_MAX = 60
-
-# ============================================
 # LOADING % LIMITS
 # ============================================
 LOADING_MIN = 0
@@ -44,16 +38,7 @@ SEGMENT_FILE_TOKEN = {
     "Loan Against Property": "lap",
 }
 
-# ============================================
-# SUM ASSURED & TENURE LIMITS PER SEGMENT
-# (same limits used for Single and Joint life)
-# ============================================
-SEGMENT_LIMITS = {
-    "Home Loan": {"sa_min": 500000, "sa_max": 6000000, "t_min": 5, "t_max": 25},
-    "Loan Against Property": {"sa_min": 100000, "sa_max": 4000000, "t_min": 1, "t_max": 10},
-}
-
-SEGMENT_OPTIONS = list(SEGMENT_LIMITS.keys())
+SEGMENT_OPTIONS = ["Home Loan", "Loan Against Property"]
 LIFE_OPTIONS = ["Single", "Joint"]
 
 # ============================================
@@ -138,9 +123,6 @@ with col3:
         help="Enter the loading percentage to apply on top of the base rate before GST."
     )
 
-limits = SEGMENT_LIMITS[segment]
-min_tenure, max_tenure = limits["t_min"], limits["t_max"]
-
 st.divider()
 
 # ============================================
@@ -148,47 +130,20 @@ st.divider()
 # ============================================
 col4, col5 = st.columns(2)
 with col4:
-    age_input = st.number_input(
+    age = st.number_input(
         "Enter Age",
-        min_value=18,
-        value=30,
+        min_value=1,
+        value=18,
         step=1
     )
-
-    if age_input < AGE_MIN:
-        st.warning(
-            f"⚠️ Minimum Age is **{AGE_MIN} years**. Value adjusted to **{AGE_MIN} years**."
-        )
-        age = AGE_MIN
-    elif age_input > AGE_MAX:
-        st.warning(
-            f"⚠️ Maximum Age is **{AGE_MAX} years**. Value adjusted to **{AGE_MAX} years**."
-        )
-        age = AGE_MAX
-    else:
-        age = age_input
 
 with col5:
-    tenure_input = st.number_input(
+    tenure = st.number_input(
         "Enter Tenure",
-        min_value=0,
-        value=min_tenure,
+        min_value=1,
+        value=1,
         step=1
     )
-    if tenure_input < min_tenure:
-        st.warning(
-            f"⚠️ Minimum Tenure for {segment} is {min_tenure} yrs. "
-            f"Value adjusted to {min_tenure} yrs."
-        )
-        tenure = min_tenure
-    elif tenure_input > max_tenure:
-        st.warning(
-            f"⚠️ Maximum Tenure for {segment} is {max_tenure} yrs. "
-            f"Value adjusted to {max_tenure} yrs."
-        )
-        tenure = max_tenure
-    else:
-        tenure = tenure_input
     st.caption("📅 Tenure is in Years")
 
 st.write("")
@@ -226,18 +181,14 @@ if st.button("Generate Rate Table", type="primary", use_container_width=True):
     try:
         df_rates, tenure_map = load_rate_table(segment, life_type)
 
-        # Ages: only those present in the sheet AND within the allowed 18-60 range
-        valid_ages = sorted(a for a in df_rates.index if AGE_MIN <= a <= AGE_MAX)
+        # Ages: exactly whatever ages exist in the sheet
+        valid_ages = sorted(df_rates.index)
 
-        # Tenures: only those present in the sheet AND within the segment's allowed range
+        # Tenures: all tenure years present in the sheet, no min/max restriction
         valid_tenure_years = sorted(tenure_map.keys())
-        valid_tenure_years = [
-            yr for yr in valid_tenure_years
-            if min_tenure <= yr <= max_tenure
-        ]
 
         if not valid_ages or not valid_tenure_years:
-            raise ValueError("No valid Age/Tenure combinations found within the allowed limits.")
+            raise ValueError("No valid Age/Tenure combinations found in the sheet.")
 
         rows = []
         for age_v in valid_ages:
