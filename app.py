@@ -5,12 +5,12 @@ import os
 import re
 
 st.set_page_config(
-    page_title="Loader Sheet Calculator",
+    page_title="Aviva Loader Sheet Calculator",
     page_icon="💰",
     layout="wide"
 )
 
-st.title("💰 Loader Sheet Calculator")
+st.title("💰 Aviva Loader Sheet Calculator")
 st.markdown("Select Type of Life, Segment, and Loading % below")
 
 GST_RATE = 0.18
