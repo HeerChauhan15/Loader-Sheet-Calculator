@@ -32,8 +32,8 @@ LOADING_MAX = 500  # generous upper bound, adjust if needed
 # EDIT THESE FILENAMES to match your actual uploaded files exactly.
 # ============================================
 FILE_MAP = {
-    ("Home Loan", "Single"): "Home Loan Single Life.xlsx",
-    ("Home Loan", "Joint"): "Home Loan Joint Life.xlsx",
+    ("Home Loan", "Single"): "Homeloan Single Life.xlsx",
+    ("Home Loan", "Joint"): "Homeloan Joint Life.xlsx",
     ("Loan Against Property", "Single"): "LAP Single Life.xlsx",
     ("Loan Against Property", "Joint"): "LAP Joint Life.xlsx",
 }
