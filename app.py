@@ -96,16 +96,16 @@ def load_rate_table(segment, life_type):
 
 
 def get_base_rate(df, tenure_map, age, tenure_years):
-    """User enters tenure in YEARS, rate table columns are in MONTHS.
-    Convert years -> months before looking up the column."""
+    """Tenure is in YEARS in both the user input and the rate table's columns —
+    no conversion needed."""
     if age not in df.index:
         raise ValueError(f"Age {age} not found in rate table.")
-    tenure_months = int(round(tenure_years * 12))
-    if tenure_months not in tenure_map:
+    tenure_key = int(round(tenure_years))
+    if tenure_key not in tenure_map:
         raise ValueError(
-            f"Tenure {tenure_years} yrs ({tenure_months} months) not found in rate table."
+            f"Tenure {tenure_years} yrs not found in rate table."
         )
-    return float(df.loc[age, tenure_map[tenure_months]])
+    return float(df.loc[age, tenure_map[tenure_key]])
 
 
 def apply_loading(base_rate, loading_pct):
@@ -247,10 +247,10 @@ if st.button("Generate Rate Table", type="primary", use_container_width=True):
         valid_ages = sorted(a for a in df_rates.index if AGE_MIN <= a <= AGE_MAX)
 
         # Tenures: only those present in the sheet AND within the segment's allowed range
-        valid_tenure_years = sorted({int(round(months / 12)) for months in tenure_map.keys()})
+        valid_tenure_years = sorted(tenure_map.keys())
         valid_tenure_years = [
             yr for yr in valid_tenure_years
-            if min_tenure <= yr <= max_tenure and int(round(yr * 12)) in tenure_map
+            if min_tenure <= yr <= max_tenure
         ]
 
         if not valid_ages or not valid_tenure_years:
