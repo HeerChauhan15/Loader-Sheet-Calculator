@@ -207,20 +207,20 @@ if st.button("Generate Rate Table", type="primary", use_container_width=True):
 
         df_table = pd.DataFrame(rows)
 
-        st.success(
-            f"✅ Generated {len(df_table)} rate combinations for "
-            f"{segment} | {life_type} Life | Loading {loading_pct}%."
-        )
-        st.dataframe(df_table, use_container_width=True)
-
-        # ---- Build the DOWNLOAD file in the original backend format ----
-        # Pivot: Age as rows, Tenure (years) as columns, Rate as values.
-        # Loading % is NOT included as a column in the downloaded file.
+        # ---- Build the pivoted table: Age as rows, Tenure (years) as columns ----
+        # This is used for BOTH the on-screen preview and the download.
+        # Loading % is not shown as a column here — it was already applied into Rate.
         df_pivot = df_table.pivot(index="Age", columns="Tenure (Yrs)", values="Rate")
         df_pivot = df_pivot.round(2)
         df_pivot = df_pivot.reset_index()
         df_pivot.columns.name = None
         df_pivot = df_pivot.rename(columns={"Age": "AGE/TERM"})
+
+        st.success(
+            f"✅ Generated {len(df_table)} rate combinations for "
+            f"{segment} | {life_type} Life | Loading {loading_pct}%."
+        )
+        st.dataframe(df_pivot, use_container_width=True)
 
         segment_token = SEGMENT_FILE_TOKEN[segment]
         life_token = life_type.lower()
