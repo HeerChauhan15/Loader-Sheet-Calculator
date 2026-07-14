@@ -19,7 +19,7 @@ GST_RATE = 0.18
 # LOADING % LIMITS
 # ============================================
 LOADING_MIN = 0
-LOADING_MAX = 500  # generous upper bound, adjust if needed
+LOADING_MAX = 99.99  # loader can never reach 100% (division by zero)
 
 # ============================================
 # FILE MAP: (Segment, Type of Life) -> filename
@@ -100,9 +100,19 @@ def get_base_rate(df, tenure_map, age, tenure_years):
 
 
 def apply_loading(base_rate, loading_pct):
-    """Loading % is applied on the sheet rate. GST is already included in the
-    sheet's rate, so this loaded value IS the final rate — no further math needed."""
-    return base_rate * (1 + (loading_pct / 100.0))
+    """
+    Sheet base rate is WITHOUT GST.
+    Step 1: loader % -> decimal (e.g. 30% -> 0.30)
+    Step 2: divisor = 1 - loader decimal (e.g. 0.70)
+    Step 3: loaded amount = base_rate / divisor
+    Step 4: final rate = loaded amount + 18% GST
+    """
+    divisor = 1 - (loading_pct / 100.0)
+    if divisor <= 0:
+        raise ValueError("Loading % cannot be 100% or more (division by zero).")
+    loaded_amount = base_rate / divisor
+    final_rate = loaded_amount * (1 + GST_RATE)
+    return final_rate
 
 
 # ============================================
@@ -120,7 +130,7 @@ with col3:
         max_value=float(LOADING_MAX),
         value=0.0,
         step=1.0,
-        help="Enter the loading percentage to apply on top of the base rate before GST."
+        help="Enter the loading percentage. Base rate will be divided by (1 - loading%), then 18% GST added."
     )
 
 st.divider()
@@ -159,7 +169,7 @@ if st.button("Get Rate", type="primary", use_container_width=True):
         )
 
         st.metric("Rate", f"{rate:,.2f}")
-        st.caption("Rate is per ₹1,00,000 Sum Assured, GST already included.")
+        st.caption("Rate is per ₹1,00,000 Sum Assured. Base rate ÷ (1 - loading%), then 18% GST added.")
     except Exception as e:
         st.error(f"Error: {e}")
 
