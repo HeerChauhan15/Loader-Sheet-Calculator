@@ -169,7 +169,7 @@ if st.button("Get Rate", type="primary", use_container_width=True):
         )
 
         st.metric("Rate", f"{rate:,.2f}")
-        st.caption("Rate is per ₹1,00,000 Sum Assured. Base rate ÷ (1 - loading%), then 18% GST added.")
+       
     except Exception as e:
         st.error(f"Error: {e}")
 
