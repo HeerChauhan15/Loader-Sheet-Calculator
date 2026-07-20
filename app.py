@@ -396,7 +396,6 @@ if uploaded_file is not None:
 
             df[age_col] = df[age_col].round(0).astype('Int64')
             df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
-            df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
 
             premiums = []
             statuses = []
@@ -477,7 +476,6 @@ if uploaded_file is not None:
                 df[c] = pd.to_numeric(df[c], errors='coerce')
 
             df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
-            df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
 
             for tcol, label in [(main_tenure_col, "Main Borrower Tenure"), (co_tenure_col, "Co Borrower Tenure")]:
                 if df[tcol].dropna().median() > 30:
