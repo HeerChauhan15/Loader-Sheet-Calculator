@@ -198,8 +198,7 @@ st.divider()
 
 st.subheader("🔢 Manual Rate Lookup")
 
-if not loader_ready:
-    st.warning("⚠ Set a valid Loader % (below 100) above to unlock rate lookup.")
+
 
 if loan_type == "Home Loan":
     min_tenure, max_tenure = 5, 25
