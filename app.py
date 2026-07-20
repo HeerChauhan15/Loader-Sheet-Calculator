@@ -17,10 +17,10 @@ st.title("💰 Aviva GCL Insurance Premium Calculator")
 st.markdown("Select plan details below")
 
 FILE_MAP = {
-    ("Single Life", "Home Loan"): "Aviva Single HomeLoan.xlsx",
-    ("Single Life", "LAP"):       "Aviva Single Lap.xlsx",
-    ("Joint Life",  "Home Loan"): "Aviva Joint Homeloan.xlsx",
-    ("Joint Life",  "LAP"):       "Aviva Joint Lap.xlsx",
+    ("Single Life", "Home Loan"): "Homeloan Single Life.xlsx",
+    ("Single Life", "LAP"):       "LAP Single Life.xlsx",
+    ("Joint Life",  "Home Loan"): "Homeloan Joint Life.xlsx",
+    ("Joint Life",  "LAP"):       "LAP Joint Life.xlsx",
 }
 
 # Maximum age allowed for any borrower at the end of the loan tenure.
