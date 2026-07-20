@@ -237,13 +237,7 @@ if life_type == "Single Life":
                 f"✅ {life_type} | {loan_type} | Age {age} | Tenure {tenure} yrs | "
                 f"Sum Assured ₹{sum_assured_manual_single:,} | Loader {loader_pct}% | GST {GST_RATE_FIXED}%"
             )
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                st.metric("Base Rate (per ₹1,00,000)", f"₹ {base_rate:,.2f}")
-            with col_b:
-                st.metric("Rate after Loader + GST", f"₹ {final_rate:,.2f}")
-            with col_c:
-                st.metric("Premium (for selected Sum Assured)", f"₹ {premium:,.2f}")
+            st.metric("Premium", f"₹ {premium:,.2f}")
         except Exception as e:
             st.error(f"Error: {e}")
 
