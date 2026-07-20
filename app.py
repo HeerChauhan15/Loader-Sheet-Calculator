@@ -29,6 +29,20 @@ FILE_MAP = {
 # Co Borrower limits the tenure to 5 years for both Main and Co Borrower).
 MAX_AGE = 65
 
+# GST is fixed and always applied on top of the Loader-adjusted rate.
+GST_RATE_FIXED = 18.0
+
+# ============================================
+# LOADER + GST FORMULA (applied to every rate before premium is computed):
+#   Rate After Loader = Base Rate / (1 - Loader% / 100)
+#   Final Rate         = Rate After Loader x (1 + GST% / 100)
+# ============================================
+def apply_loader_and_gst(base_rate, loader_pct, gst_pct=GST_RATE_FIXED):
+    after_loader = base_rate / (1 - (loader_pct / 100.0))
+    final_rate = after_loader * (1 + (gst_pct / 100.0))
+    return final_rate
+
+
 def load_rate_table(life_type, loan_type):
     fname = FILE_MAP[(life_type, loan_type)]
     if not os.path.exists(fname):
@@ -137,15 +151,6 @@ def map_joint_columns(df):
     return mapping
 
 
-def find_sum_assured_column(df):
-    """Flexibly detect an optional Sum Assured / Sum Insured / Loan Amount column."""
-    for col in df.columns:
-        norm = _normalize(col)
-        if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
-            return col
-    return None
-
-
 # ============================================
 # DROPDOWNS
 # ============================================
@@ -155,6 +160,24 @@ with col1:
     life_type = st.selectbox("Select Life Type", ["Single Life", "Joint Life"])
 with col2:
     loan_type = st.selectbox("Select Loan Type", ["Home Loan", "LAP"])
+
+# ============================================
+# SHARED LOADER % — applied to every rate (Manual Single, Manual Joint, Bulk)
+# before computing premium. GST @ 18% is then applied automatically on top.
+# ============================================
+st.subheader("⚙️ Loader Setting")
+loader_pct = st.number_input(
+    "Loader % (applied to all rate lookups below; GST @ 18% is then added automatically)",
+    min_value=0.0,
+    max_value=99.99,
+    value=None,
+    step=1.0,
+    placeholder="Enter loader %",
+    key="shared_loader_pct"
+)
+st.info(f"ℹ️ GST @ {GST_RATE_FIXED}% will be added automatically after the Loader — it is not editable.")
+
+loader_ready = loader_pct is not None and loader_pct < 100
 
 # ============================================
 # SUM ASSURED RANGE — rates in the backend files are per ₹1,00,000
@@ -174,6 +197,9 @@ st.divider()
 # ============================================
 
 st.subheader("🔢 Manual Rate Lookup")
+
+if not loader_ready:
+    st.warning("⚠ Set a valid Loader % (below 100) above to unlock rate lookup.")
 
 if loan_type == "Home Loan":
     min_tenure, max_tenure = 5, 25
@@ -204,16 +230,22 @@ if life_type == "Single Life":
         key="sa_manual_single"
     )
 
-    if st.button("Get Rate", type="primary"):
+    if st.button("Get Rate", type="primary", disabled=not loader_ready):
         try:
             df_rates, tenure_map = load_rate_table(life_type, loan_type)
-            rate = get_rate(df_rates, tenure_map, age, tenure)
-            premium = rate * (sum_assured_manual_single / 100000)
-            st.success(f"✅ {life_type} | {loan_type} | Age {age} | Tenure {tenure} yrs | Sum Assured ₹{sum_assured_manual_single:,}")
-            col_a, col_b = st.columns(2)
+            base_rate = get_rate(df_rates, tenure_map, age, tenure)
+            final_rate = apply_loader_and_gst(base_rate, loader_pct)
+            premium = final_rate * (sum_assured_manual_single / 100000)
+            st.success(
+                f"✅ {life_type} | {loan_type} | Age {age} | Tenure {tenure} yrs | "
+                f"Sum Assured ₹{sum_assured_manual_single:,} | Loader {loader_pct}% | GST {GST_RATE_FIXED}%"
+            )
+            col_a, col_b, col_c = st.columns(3)
             with col_a:
-                st.metric("Rate (per ₹1,00,000)", f"₹ {rate:,.2f}")
+                st.metric("Base Rate (per ₹1,00,000)", f"₹ {base_rate:,.2f}")
             with col_b:
+                st.metric("Rate after Loader + GST", f"₹ {final_rate:,.2f}")
+            with col_c:
                 st.metric("Premium (for selected Sum Assured)", f"₹ {premium:,.2f}")
         except Exception as e:
             st.error(f"Error: {e}")
@@ -251,7 +283,7 @@ else:
         key="sa_manual_joint"
     )
 
-    if st.button("Get Rate", type="primary"):
+    if st.button("Get Rate", type="primary", disabled=not loader_ready):
         try:
             df_rates, tenure_map = load_rate_table(life_type, loan_type)
 
@@ -267,11 +299,13 @@ else:
                     f"allowed tenure ({min_tenure} yrs) because of the age limit (max age {MAX_AGE})."
                 )
 
-            rate_main = get_rate(df_rates, tenure_map, main_age, effective_tenure)
-            premium_main = rate_main * (sum_assured_manual_joint / 100000)
+            rate_main_base = get_rate(df_rates, tenure_map, main_age, effective_tenure)
+            rate_main_final = apply_loader_and_gst(rate_main_base, loader_pct)
+            premium_main = rate_main_final * (sum_assured_manual_joint / 100000)
 
-            rate_co = get_rate(df_rates, tenure_map, co_age, effective_tenure)
-            premium_co = rate_co * (sum_assured_manual_joint / 100000)
+            rate_co_base = get_rate(df_rates, tenure_map, co_age, effective_tenure)
+            rate_co_final = apply_loader_and_gst(rate_co_base, loader_pct)
+            premium_co = rate_co_final * (sum_assured_manual_joint / 100000)
 
             total_premium = premium_main + premium_co
 
@@ -284,6 +318,7 @@ else:
 
             st.success(
                 f"✅ {life_type} | {loan_type} | Sum Assured ₹{sum_assured_manual_joint:,} | "
+                f"Loader {loader_pct}% | GST {GST_RATE_FIXED}% | "
                 f"Main Borrower: Age {main_age}, Tenure used {effective_tenure} yrs | "
                 f"Co Borrower: Age {co_age}, Tenure used {effective_tenure} yrs"
             )
@@ -309,8 +344,7 @@ st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 if life_type == "Single Life":
     st.markdown(
         "Your Excel must have at least: **Name**, **Age**, **Tenure** (in years). "
-        "You may also include a **Sum Assured** column — if not provided, the Sum Assured "
-        "selected below will be used for all entries."
+        "The Sum Assured selected below will be used for every row."
     )
 else:
     st.markdown(
@@ -318,12 +352,11 @@ else:
         "**Co Borrower** (Name, Age, Tenure in years). "
         f"Loan tenure is shared between borrowers — if either borrower's age + tenure would "
         f"exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers. "
-        "You may also include a **Sum Assured** column — if not provided, the Sum Assured "
-        "selected below will be used for all entries."
+        "The Sum Assured selected below will be used for every row."
     )
 
 sum_assured_bulk = st.number_input(
-    "Select Sum Assured (₹) for Bulk Upload (used only if the Excel has no Sum Assured column)",
+    "Select Sum Assured (₹) for Bulk Upload — used for every row",
     min_value=sa_min,
     max_value=sa_max,
     value=sa_min,
@@ -332,11 +365,11 @@ sum_assured_bulk = st.number_input(
     key="sa_bulk"
 )
 
-st.warning("⚠️ Please make sure you have selected **Life Type** and **Loan Type** above before uploading your Excel file.")
+st.warning("⚠️ Please make sure you have selected **Life Type**, **Loan Type**, and a valid **Loader %** above before uploading your Excel file.")
 
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], disabled=not loader_ready)
 
-if uploaded_file is not None:
+if uploaded_file is not None and loader_ready:
     try:
         df = pd.read_excel(uploaded_file)
         df.columns = [str(c).strip() for c in df.columns]
@@ -358,7 +391,6 @@ if uploaded_file is not None:
             name_col = find_column(df, "Name")
             age_col = find_column(df, "Age")
             tenure_col = find_column(df, "Tenure")
-            sa_col = find_sum_assured_column(df)
 
             if not name_col or not age_col or not tenure_col:
                 raise ValueError("Excel must contain mandatory columns: Name, Age, Tenure")
@@ -375,23 +407,15 @@ if uploaded_file is not None:
             df[age_col] = df[age_col].round(0).astype('Int64')
             df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
 
-            if sa_col:
-                st.info(f"ℹ️ Found '{sa_col}' column — using per-row Sum Assured (capped to ₹{sa_min:,}–₹{sa_max:,}).")
-                df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce').fillna(sum_assured_bulk)
-                df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
-                sa_series = df[sa_col]
-            else:
-                sa_series = pd.Series([sum_assured_bulk] * len(df), index=df.index)
-
             premiums = []
             statuses = []
             for idx, row in df.iterrows():
                 try:
                     r_age = int(row[age_col])
                     r_tenure = int(row[tenure_col])
-                    r = get_rate(df_rates, tenure_map, r_age, r_tenure)
-                    row_sa = float(sa_series.loc[idx])
-                    premium = round(r * (row_sa / 100000), 2)
+                    r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
+                    r_final = apply_loader_and_gst(r_base, loader_pct)
+                    premium = round(r_final * (sum_assured_bulk / 100000), 2)
                     premiums.append(premium)
                     statuses.append("✅")
                 except Exception as e:
@@ -432,7 +456,6 @@ if uploaded_file is not None:
         # ============================================
         else:
             mapping = map_joint_columns(df)
-            sa_col = find_sum_assured_column(df)
 
             required_keys = [
                 ('main', 'name'), ('main', 'age'), ('main', 'tenure'),
@@ -475,14 +498,6 @@ if uploaded_file is not None:
                 f"would exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers."
             )
 
-            if sa_col:
-                st.info(f"ℹ️ Found '{sa_col}' column — using per-row Sum Assured (capped to ₹{sa_min:,}–₹{sa_max:,}).")
-                df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce').fillna(sum_assured_bulk)
-                df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
-                sa_series = df[sa_col]
-            else:
-                sa_series = pd.Series([sum_assured_bulk] * len(df), index=df.index)
-
             premium_main_list = []
             premium_co_list = []
             total_list = []
@@ -494,7 +509,6 @@ if uploaded_file is not None:
                 p_main = None
                 p_co = None
                 eff_tenure = None
-                row_sa = float(sa_series.loc[idx])
                 try:
                     m_age = int(row[main_age_col])
                     m_tenure = int(row[main_tenure_col])
@@ -513,11 +527,13 @@ if uploaded_file is not None:
                             f"({min_t} yrs) due to age limit (max age {MAX_AGE})"
                         )
 
-                    rate_main = get_rate(df_rates, tenure_map, m_age, eff_tenure)
-                    p_main = round(rate_main * (row_sa / 100000), 2)
+                    rate_main_base = get_rate(df_rates, tenure_map, m_age, eff_tenure)
+                    rate_main_final = apply_loader_and_gst(rate_main_base, loader_pct)
+                    p_main = round(rate_main_final * (sum_assured_bulk / 100000), 2)
 
-                    rate_co = get_rate(df_rates, tenure_map, c_age, eff_tenure)
-                    p_co = round(rate_co * (row_sa / 100000), 2)
+                    rate_co_base = get_rate(df_rates, tenure_map, c_age, eff_tenure)
+                    rate_co_final = apply_loader_and_gst(rate_co_base, loader_pct)
+                    p_co = round(rate_co_final * (sum_assured_bulk / 100000), 2)
 
                     if eff_tenure < max(m_tenure, c_tenure):
                         row_status = f"✅ (tenure capped to {eff_tenure} yrs due to age limit)"
