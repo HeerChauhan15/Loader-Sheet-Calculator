@@ -102,6 +102,15 @@ def find_column(df, target):
     return None
 
 
+def find_sum_assured_column(df):
+    """Flexibly detect a Sum Assured / Sum Insured / Loan Amount column."""
+    for col in df.columns:
+        norm = re.sub(r'[\s_\-]+', '', str(col).lower())
+        if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
+            return col
+    return None
+
+
 def _normalize(s):
     return re.sub(r'[\s_\-]+', '', str(s).lower())
 
@@ -331,20 +340,17 @@ st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 if life_type == "Single Life":
     st.markdown(
-        "Your Excel must have at least: **Name**, **Age**, **Tenure** (in years)."
+        "Your Excel must have at least: **Name**, **Age**, **Tenure** (in years), **Sum Assured**."
     )
 else:
     st.markdown(
         "Your Excel must have at least: **Main Borrower** (Name, Age, Tenure in years) and "
-        "**Co Borrower** (Name, Age, Tenure in years). "
+        "**Co Borrower** (Name, Age, Tenure in years), plus a **Sum Assured** column. "
         f"Loan tenure is shared between borrowers — if either borrower's age + tenure would "
         f"exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers."
     )
 
-st.caption("Rates/premium shown are as per ₹1,00,000 Sum Assured.")
-
-sum_assured_bulk = 100000
-
+st.caption(f"Each row uses its own Sum Assured from the Excel (must be between ₹{sa_min:,} and ₹{sa_max:,}).")
 st.warning("⚠️ Please make sure you have selected **Life Type** and **Loan Type** above before uploading your Excel file.")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
@@ -371,12 +377,16 @@ if uploaded_file is not None:
             name_col = find_column(df, "Name")
             age_col = find_column(df, "Age")
             tenure_col = find_column(df, "Tenure")
+            sa_col = find_sum_assured_column(df)
 
             if not name_col or not age_col or not tenure_col:
                 raise ValueError("Excel must contain mandatory columns: Name, Age, Tenure")
+            if not sa_col:
+                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount').")
 
             df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
             df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
+            df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
 
             if df[tenure_col].dropna().median() > 30:
                 st.info("ℹ️ Tenure values look like months — auto-converting to years.")
@@ -386,6 +396,7 @@ if uploaded_file is not None:
 
             df[age_col] = df[age_col].round(0).astype('Int64')
             df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
+            df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
 
             premiums = []
             statuses = []
@@ -393,9 +404,10 @@ if uploaded_file is not None:
                 try:
                     r_age = int(row[age_col])
                     r_tenure = int(row[tenure_col])
+                    r_sa = float(row[sa_col])
                     r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
                     r_final = apply_loader_and_gst(r_base, loader_pct)
-                    premium = round(r_final * (sum_assured_bulk / 100000), 2)
+                    premium = round(r_final * (r_sa / 100000), 2)
                     premiums.append(premium)
                     statuses.append("✅")
                 except Exception as e:
@@ -405,7 +417,7 @@ if uploaded_file is not None:
             df["Premium"] = premiums
             df["Status"] = statuses
 
-            core_cols = [name_col, age_col, tenure_col, "Premium"]
+            core_cols = [name_col, age_col, tenure_col, sa_col, "Premium"]
             extra_cols = [c for c in df.columns if c not in core_cols]
             df = df[core_cols + extra_cols]
 
@@ -436,6 +448,7 @@ if uploaded_file is not None:
         # ============================================
         else:
             mapping = map_joint_columns(df)
+            sa_col = find_sum_assured_column(df)
 
             required_keys = [
                 ('main', 'name'), ('main', 'age'), ('main', 'tenure'),
@@ -450,6 +463,8 @@ if uploaded_file is not None:
                     "Name/Age/Tenure columns (any reasonable naming works, e.g. "
                     "'Main Borrower Age', 'MB Age', 'Age1')."
                 )
+            if not sa_col:
+                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount').")
 
             main_name_col = mapping[('main', 'name')]
             main_age_col = mapping[('main', 'age')]
@@ -460,6 +475,9 @@ if uploaded_file is not None:
 
             for c in [main_age_col, main_tenure_col, co_age_col, co_tenure_col]:
                 df[c] = pd.to_numeric(df[c], errors='coerce')
+
+            df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
+            df[sa_col] = df[sa_col].clip(lower=sa_min, upper=sa_max)
 
             for tcol, label in [(main_tenure_col, "Main Borrower Tenure"), (co_tenure_col, "Co Borrower Tenure")]:
                 if df[tcol].dropna().median() > 30:
@@ -494,6 +512,7 @@ if uploaded_file is not None:
                     m_tenure = int(row[main_tenure_col])
                     c_age = int(row[co_age_col])
                     c_tenure = int(row[co_tenure_col])
+                    row_sa = float(row[sa_col])
 
                     # Loan tenure is shared — cap it so neither borrower's age + tenure
                     # exceeds MAX_AGE, then use the same (lower) tenure for both.
@@ -509,11 +528,11 @@ if uploaded_file is not None:
 
                     rate_main_base = get_rate(df_rates, tenure_map, m_age, eff_tenure)
                     rate_main_final = apply_loader_and_gst(rate_main_base, loader_pct)
-                    p_main = round(rate_main_final * (sum_assured_bulk / 100000), 2)
+                    p_main = round(rate_main_final * (row_sa / 100000), 2)
 
                     rate_co_base = get_rate(df_rates, tenure_map, c_age, eff_tenure)
                     rate_co_final = apply_loader_and_gst(rate_co_base, loader_pct)
-                    p_co = round(rate_co_final * (sum_assured_bulk / 100000), 2)
+                    p_co = round(rate_co_final * (row_sa / 100000), 2)
 
                     if eff_tenure < max(m_tenure, c_tenure):
                         row_status = f"✅ (tenure capped to {eff_tenure} yrs due to age limit)"
@@ -535,7 +554,7 @@ if uploaded_file is not None:
             core_cols = [
                 main_name_col, main_age_col, main_tenure_col, "Main Borrower Premium",
                 co_name_col, co_age_col, co_tenure_col, "Co Borrower Premium",
-                "Tenure Used", "Total Premium"
+                sa_col, "Tenure Used", "Total Premium"
             ]
             extra_cols = [c for c in df.columns if c not in core_cols]
             df_display = df[core_cols + extra_cols]
@@ -566,16 +585,17 @@ if uploaded_file is not None:
             n_extra = len(extra_cols)
             # Column positions (1-indexed): Main group = cols 1-4 (Name, Age, Tenure, Premium),
             # Co group = cols 5-8 (Name, Age, Tenure, Premium),
-            # Tenure Used = col 9, Total Premium = col 10, extras start at col 11
+            # Sum Assured = col 9, Tenure Used = col 10, Total Premium = col 11, extras start at col 12
             main_start, main_end = 1, 4
             co_start, co_end = 5, 8
-            tenure_used_col = 9
-            total_col = 10
-            extra_start = 11
+            sa_out_col = 9
+            tenure_used_col = 10
+            total_col = 11
+            extra_start = 12
 
             # Row 2: sub-headers (actual field names)
             row2_labels = ["Name", "Age", "Tenure", "Premium", "Name", "Age", "Tenure", "Premium",
-                           "Tenure Used", "Total Premium"] + extra_cols
+                           "Sum Assured", "Tenure Used", "Total Premium"] + extra_cols
             for idx, label in enumerate(row2_labels, start=1):
                 cell = ws.cell(row=2, column=idx, value=label)
                 cell.font = bold
@@ -589,6 +609,11 @@ if uploaded_file is not None:
             ws.merge_cells(start_row=1, start_column=co_start, end_row=1, end_column=co_end)
             ws.cell(row=1, column=co_start, value="CO BORROWER").font = bold
             ws.cell(row=1, column=co_start).alignment = center
+
+            ws.merge_cells(start_row=1, start_column=sa_out_col, end_row=2, end_column=sa_out_col)
+            ws.cell(row=1, column=sa_out_col, value="SUM ASSURED").font = bold
+            ws.cell(row=1, column=sa_out_col).alignment = center
+            ws.cell(row=2, column=sa_out_col, value=None)
 
             ws.merge_cells(start_row=1, start_column=tenure_used_col, end_row=2, end_column=tenure_used_col)
             ws.cell(row=1, column=tenure_used_col, value="TENURE USED").font = bold
