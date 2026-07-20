@@ -166,17 +166,18 @@ with col2:
 # before computing premium. GST @ 18% is then applied automatically on top.
 # ============================================
 st.subheader("⚙️ Loader Setting")
-loader_pct = st.number_input(
-    "Loader % (applied to all rate lookups below; GST @ 18% is then added automatically)",
+loader_pct_input = st.number_input(
+    "Loader % (optional — applied to all rate lookups below; GST @ 18% is then added automatically)",
     min_value=0.0,
     max_value=99.99,
     value=None,
     step=1.0,
-    placeholder="Enter loader %",
+    placeholder="Enter loader % (optional, defaults to 0)",
     key="shared_loader_pct"
 )
+loader_pct = loader_pct_input if loader_pct_input is not None else 0.0
 
-loader_ready = loader_pct is not None and loader_pct < 100
+loader_ready = True
 
 # ============================================
 # SUM ASSURED RANGE — rates in the backend files are per ₹1,00,000
@@ -226,10 +227,8 @@ if life_type == "Single Life":
         key="sa_manual_single"
     )
 
-    if st.button("Get Rate", type="primary", disabled=not loader_ready):
+    if st.button("Get Rate", type="primary"):
         try:
-            if not loader_ready:
-                raise ValueError("Please set a valid Loader % (below 100) before calculating.")
             df_rates, tenure_map = load_rate_table(life_type, loan_type)
             base_rate = get_rate(df_rates, tenure_map, age, tenure)
             final_rate = apply_loader_and_gst(base_rate, loader_pct)
@@ -281,10 +280,8 @@ else:
         key="sa_manual_joint"
     )
 
-    if st.button("Get Rate", type="primary", disabled=not loader_ready):
+    if st.button("Get Rate", type="primary"):
         try:
-            if not loader_ready:
-                raise ValueError("Please set a valid Loader % (below 100) before calculating.")
             df_rates, tenure_map = load_rate_table(life_type, loan_type)
             main_age_cap = MAX_AGE - main_age
             co_age_cap = MAX_AGE - co_age
@@ -354,11 +351,11 @@ st.caption("Rates/premium shown are as per ₹1,00,000 Sum Assured.")
 
 sum_assured_bulk = 100000
 
-st.warning("⚠️ Please make sure you have selected **Life Type**, **Loan Type**, and a valid **Loader %** above before uploading your Excel file.")
+st.warning("⚠️ Please make sure you have selected **Life Type** and **Loan Type** above before uploading your Excel file.")
 
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"], disabled=not loader_ready)
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
-if uploaded_file is not None and loader_ready:
+if uploaded_file is not None:
     try:
         df = pd.read_excel(uploaded_file)
         df.columns = [str(c).strip() for c in df.columns]
