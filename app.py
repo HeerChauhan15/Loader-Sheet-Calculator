@@ -175,7 +175,6 @@ loader_pct = st.number_input(
     placeholder="Enter loader %",
     key="shared_loader_pct"
 )
-st.info(f"ℹ️ GST @ {GST_RATE_FIXED}% will be added automatically after the Loader — it is not editable.")
 
 loader_ready = loader_pct is not None and loader_pct < 100
 
@@ -197,8 +196,6 @@ st.divider()
 # ============================================
 
 st.subheader("🔢 Manual Rate Lookup")
-
-
 
 if loan_type == "Home Loan":
     min_tenure, max_tenure = 5, 25
@@ -231,6 +228,8 @@ if life_type == "Single Life":
 
     if st.button("Get Rate", type="primary", disabled=not loader_ready):
         try:
+            if not loader_ready:
+                raise ValueError("Please set a valid Loader % (below 100) before calculating.")
             df_rates, tenure_map = load_rate_table(life_type, loan_type)
             base_rate = get_rate(df_rates, tenure_map, age, tenure)
             final_rate = apply_loader_and_gst(base_rate, loader_pct)
@@ -284,10 +283,9 @@ else:
 
     if st.button("Get Rate", type="primary", disabled=not loader_ready):
         try:
+            if not loader_ready:
+                raise ValueError("Please set a valid Loader % (below 100) before calculating.")
             df_rates, tenure_map = load_rate_table(life_type, loan_type)
-
-            # Loan tenure is shared — cap it so neither borrower's age + tenure
-            # exceeds MAX_AGE, then use the same (lower) tenure for both.
             main_age_cap = MAX_AGE - main_age
             co_age_cap = MAX_AGE - co_age
             effective_tenure = min(main_tenure, co_tenure, main_age_cap, co_age_cap)
