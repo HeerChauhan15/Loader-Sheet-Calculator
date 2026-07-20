@@ -228,11 +228,10 @@ if life_type == "Single Life":
 
     sum_assured_manual_single = st.number_input(
         "Select Sum Assured (₹)",
-        min_value=sa_min,
-        max_value=sa_max,
+        min_value=0,
         value=sa_min,
-        step=100000,
-        help=f"For {loan_type}, Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}.",
+        step=1,
+        help="Enter the exact Sum Assured for this member.",
         key="sa_manual_single"
     )
 
@@ -275,11 +274,10 @@ else:
 
     sum_assured_manual_joint = st.number_input(
         "Select Sum Assured (₹)",
-        min_value=sa_min,
-        max_value=sa_max,
+        min_value=0,
         value=sa_min,
-        step=100000,
-        help=f"For {loan_type}, Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}.",
+        step=1,
+        help="Enter the exact Sum Assured for this case.",
         key="sa_manual_joint"
     )
 
