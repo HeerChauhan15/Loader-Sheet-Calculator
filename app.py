@@ -343,27 +343,19 @@ st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 if life_type == "Single Life":
     st.markdown(
-        "Your Excel must have at least: **Name**, **Age**, **Tenure** (in years). "
-        "The Sum Assured selected below will be used for every row."
+        "Your Excel must have at least: **Name**, **Age**, **Tenure** (in years)."
     )
 else:
     st.markdown(
         "Your Excel must have at least: **Main Borrower** (Name, Age, Tenure in years) and "
         "**Co Borrower** (Name, Age, Tenure in years). "
         f"Loan tenure is shared between borrowers — if either borrower's age + tenure would "
-        f"exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers. "
-        "The Sum Assured selected below will be used for every row."
+        f"exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers."
     )
 
-sum_assured_bulk = st.number_input(
-    "Select Sum Assured (₹) for Bulk Upload — used for every row",
-    min_value=sa_min,
-    max_value=sa_max,
-    value=sa_min,
-    step=100000,
-    help=f"For {loan_type}, Sum Assured must be between ₹{sa_min:,} and ₹{sa_max:,}.",
-    key="sa_bulk"
-)
+st.caption("Rates/premium shown are as per ₹1,00,000 Sum Assured.")
+
+sum_assured_bulk = 100000
 
 st.warning("⚠️ Please make sure you have selected **Life Type**, **Loan Type**, and a valid **Loader %** above before uploading your Excel file.")
 
