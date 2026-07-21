@@ -27,12 +27,6 @@ FILE_MAP = {
     ("Reducing", "Joint Life",  "LAP"):       "Reducing- LAP.xlsx",
 }
 
-# Maximum age allowed for any borrower at the end of the loan tenure.
-# For Joint Life, the loan tenure used for BOTH borrowers is capped so that
-# neither borrower's age + tenure exceeds this limit (e.g. a 60-year-old
-# Co Borrower limits the tenure to 5 years for both Main and Co Borrower).
-MAX_AGE = 65
-
 # GST is fixed and always applied on top of the Loader-adjusted rate.
 GST_RATE_FIXED = 18.0
 
@@ -97,7 +91,7 @@ def get_rate(df, tenure_map, age, tenure):
 
 
 def find_column(df, target):
-    """Exact (case/space-insensitive) match — used for Single Life."""
+    """Exact (case/space-insensitive) match."""
     target_norm = target.strip().lower().replace(" ", "")
     for col in df.columns:
         col_norm = str(col).strip().lower().replace(" ", "")
@@ -149,55 +143,6 @@ def derive_tenure_years(start_series, end_series):
     return years.astype('Int64')
 
 
-def _normalize(s):
-    return re.sub(r'[\s_\-]+', '', str(s).lower())
-
-
-def detect_person(norm):
-    """Decide whether a (normalized) column name belongs to Main Borrower or Co Borrower."""
-    if 'mainborrower' in norm or norm.startswith('mb') or 'borrower1' in norm:
-        return 'main'
-    if 'coborrower' in norm or norm.startswith('cb') or 'borrower2' in norm:
-        return 'co'
-    # fallback: trailing 1 / 2 like Name1 / Name2, Age1 / Age2
-    if norm.endswith('1'):
-        return 'main'
-    if norm.endswith('2'):
-        return 'co'
-    return None
-
-
-def detect_field(norm):
-    if 'name' in norm:
-        return 'name'
-    if 'tenure' in norm:
-        return 'tenure'
-    if 'age' in norm:
-        return 'age'
-    return None
-
-
-def map_joint_columns(df):
-    """
-    Flexibly detect Main Borrower / Co Borrower Name/Age/Tenure columns
-    regardless of exact header wording (Main Borrower Name, MB Name, Name1,
-    Borrower 1 Name, etc.)
-    """
-    mapping = {}  # (person, field) -> actual column name
-    for col in df.columns:
-        norm = _normalize(col)
-        field = detect_field(norm)
-        if field is None:
-            continue
-        person = detect_person(norm)
-        if person is None:
-            continue
-        key = (person, field)
-        if key not in mapping:
-            mapping[key] = col
-    return mapping
-
-
 # ============================================
 # DROPDOWNS
 # ============================================
@@ -214,7 +159,7 @@ else:
     cover_type = "Level"
 
 # ============================================
-# SHARED LOADER % — applied to every rate (Manual Single, Manual Joint, Bulk)
+# SHARED LOADER % — applied to every rate (Manual + Bulk)
 # before computing premium. GST @ 18% is then added automatically on top.
 # ============================================
 st.subheader("⚙️ Loader Setting")
@@ -229,13 +174,8 @@ loader_pct_input = st.number_input(
 )
 loader_pct = loader_pct_input if loader_pct_input is not None else 0.0
 
-loader_ready = True
-
 # ============================================
 # SUM ASSURED RANGE — rates in the backend files are per ₹1,00,000
-# (The actual Sum Assured input widgets are now defined separately inside
-# the Manual and Bulk sections below, so changing one does not affect
-# the others.)
 # ============================================
 if loan_type == "Home Loan":
     sa_min, sa_max = 100000, 6000000
@@ -255,122 +195,41 @@ if loan_type == "Home Loan":
 else:
     min_tenure, max_tenure = 2, 10
 
-if life_type == "Single Life":
-    col3, col4 = st.columns(2)
-    with col3:
-        age = st.number_input("Enter Age", min_value=18, max_value=65, value=30, step=1)
-    with col4:
-        tenure = st.number_input(
-            "Enter Tenure",
-            min_value=min_tenure,
-            max_value=max_tenure,
-            value=min_tenure,
-            step=1
-        )
-        st.caption("📅 Tenure is in Years")
-
-    sum_assured_manual_single = st.number_input(
-        "Select Sum Assured (₹)",
-        min_value=0,
-        value=sa_min,
-        step=1,
-        help="Enter the exact Sum Assured for this member.",
-        key="sa_manual_single"
+col3, col4 = st.columns(2)
+with col3:
+    age = st.number_input("Enter Age", min_value=18, max_value=65, value=30, step=1)
+with col4:
+    tenure = st.number_input(
+        "Enter Tenure",
+        min_value=min_tenure,
+        max_value=max_tenure,
+        value=min_tenure,
+        step=1
     )
-
-    if st.button("Get Rate", type="primary"):
-        try:
-            df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
-            base_rate = get_rate(df_rates, tenure_map, age, tenure)
-            final_rate = apply_loader_and_gst(base_rate, loader_pct)
-            premium = final_rate * (sum_assured_manual_single / 100000)
-            st.success(
-                f"✅ {life_type} | {loan_type} | {cover_type} Cover | Age {age} | Tenure {tenure} yrs | "
-                f"Sum Assured ₹{sum_assured_manual_single:,} | Loader {loader_pct}% | GST {GST_RATE_FIXED}%"
-            )
-            st.metric("Premium", f"₹ {premium:,.2f}")
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-else:
-    st.markdown("**Main Borrower**")
-    mcol1, mcol2 = st.columns(2)
-    with mcol1:
-        main_age = st.number_input("Age", min_value=18, max_value=65, value=30, step=1, key="main_age_manual")
-    with mcol2:
-        main_tenure = st.number_input(
-            "Tenure", min_value=min_tenure, max_value=max_tenure,
-            value=min_tenure, step=1, key="main_tenure_manual"
-        )
     st.caption("📅 Tenure is in Years")
 
-    st.markdown("**Co Borrower**")
-    ccol1, ccol2 = st.columns(2)
-    with ccol1:
-        co_age = st.number_input("Age", min_value=18, max_value=65, value=30, step=1, key="co_age_manual")
-    with ccol2:
-        co_tenure = st.number_input(
-            "Tenure", min_value=min_tenure, max_value=max_tenure,
-            value=min_tenure, step=1, key="co_tenure_manual"
+sum_assured_manual = st.number_input(
+    "Select Sum Assured (₹)",
+    min_value=0,
+    value=sa_min,
+    step=1,
+    help="Enter the exact Sum Assured for this member.",
+    key="sa_manual"
+)
+
+if st.button("Get Rate", type="primary"):
+    try:
+        df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
+        base_rate = get_rate(df_rates, tenure_map, age, tenure)
+        final_rate = apply_loader_and_gst(base_rate, loader_pct)
+        premium = final_rate * (sum_assured_manual / 100000)
+        st.success(
+            f"✅ {life_type} | {loan_type} | {cover_type} Cover | Age {age} | Tenure {tenure} yrs | "
+            f"Sum Assured ₹{sum_assured_manual:,} | Loader {loader_pct}% | GST {GST_RATE_FIXED}%"
         )
-    st.caption(f"📅 Tenure is in Years. Maximum age allowed at end of tenure is {MAX_AGE} — the lower of the two borrowers' allowed tenures is used for both.")
-
-    sum_assured_manual_joint = st.number_input(
-        "Select Sum Assured (₹)",
-        min_value=0,
-        value=sa_min,
-        step=1,
-        help="Enter the exact Sum Assured for this case.",
-        key="sa_manual_joint"
-    )
-
-    if st.button("Get Rate", type="primary"):
-        try:
-            df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
-            main_age_cap = MAX_AGE - main_age
-            co_age_cap = MAX_AGE - co_age
-            effective_tenure = min(main_tenure, co_tenure, main_age_cap, co_age_cap)
-
-            if effective_tenure < min_tenure:
-                raise ValueError(
-                    f"Effective tenure ({effective_tenure} yrs) falls below the minimum "
-                    f"allowed tenure ({min_tenure} yrs) because of the age limit (max age {MAX_AGE})."
-                )
-
-            rate_main_base = get_rate(df_rates, tenure_map, main_age, effective_tenure)
-            rate_main_final = apply_loader_and_gst(rate_main_base, loader_pct)
-            premium_main = rate_main_final * (sum_assured_manual_joint / 100000)
-
-            rate_co_base = get_rate(df_rates, tenure_map, co_age, effective_tenure)
-            rate_co_final = apply_loader_and_gst(rate_co_base, loader_pct)
-            premium_co = rate_co_final * (sum_assured_manual_joint / 100000)
-
-            total_premium = premium_main + premium_co
-
-            if effective_tenure < max(main_tenure, co_tenure):
-                st.info(
-                    f"ℹ️ Tenure capped to {effective_tenure} yrs for both borrowers because of the "
-                    f"age limit (max age {MAX_AGE}). Main Borrower entered {main_tenure} yrs, "
-                    f"Co Borrower entered {co_tenure} yrs."
-                )
-
-            st.success(
-                f"✅ {life_type} | {loan_type} | {cover_type} Cover | "
-                f"Sum Assured ₹{sum_assured_manual_joint:,} | "
-                f"Loader {loader_pct}% | GST {GST_RATE_FIXED}% | "
-                f"Main Borrower: Age {main_age}, Tenure used {effective_tenure} yrs | "
-                f"Co Borrower: Age {co_age}, Tenure used {effective_tenure} yrs"
-            )
-
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                st.metric("Main Borrower Premium", f"₹ {premium_main:,.2f}")
-            with col_b:
-                st.metric("Co Borrower Premium", f"₹ {premium_co:,.2f}")
-            with col_c:
-                st.metric("Total Premium", f"₹ {total_premium:,.2f}")
-        except Exception as e:
-            st.error(f"Error: {e}")
+        st.metric("Premium", f"₹ {premium:,.2f}")
+    except Exception as e:
+        st.error(f"Error: {e}")
 
 st.divider()
 
@@ -380,23 +239,12 @@ st.divider()
 
 st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
-if life_type == "Single Life":
-    st.markdown(
-        "Your Excel must have at least: **Name**, **Age**, **Sum Assured** (or **Loan "
-        "Outstanding** if Sum Assured isn't present), and either a **Tenure** column (in "
-        "years) or **Loan Start Date** + **Loan End Date** columns (Tenure will be "
-        "auto-calculated from the dates)."
-    )
-else:
-    st.markdown(
-        "Your Excel must have at least: **Main Borrower** (Name, Age) and "
-        "**Co Borrower** (Name, Age), plus a **Sum Assured** column (or **Loan "
-        "Outstanding** if Sum Assured isn't present), and either **Tenure** columns "
-        "(in years) or **Loan Start Date** + **Loan End Date** columns (Tenure will be "
-        "auto-calculated from the dates and shared between both borrowers). "
-        f"If either borrower's age + tenure would exceed {MAX_AGE} years, the tenure is "
-        f"automatically capped for both borrowers."
-    )
+st.markdown(
+    "Your Excel must have at least: **Name**, **Age**, **Sum Assured** (or **Loan "
+    "Outstanding** if Sum Assured isn't present), and either a **Tenure** column (in "
+    "years) or **Loan Start Date** + **Loan End Date** columns (Tenure will be "
+    "auto-calculated from the dates)."
+)
 
 st.caption(f"Each row uses its own Sum Assured from the Excel (must be between ₹{sa_min:,} and ₹{sa_max:,}).")
 st.warning("⚠️ Please make sure you have selected **Life Type**, **Loan Type**, and **Type of Cover** above before uploading your Excel file.")
@@ -418,316 +266,87 @@ if uploaded_file is not None:
 
         df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
 
-        # ============================================
-        # SINGLE LIFE
-        # ============================================
-        if life_type == "Single Life":
-            name_col = find_column(df, "Name")
-            age_col = find_column(df, "Age")
-            tenure_col = find_column(df, "Tenure")
-            sa_col = find_sum_assured_column(df)
+        name_col = find_column(df, "Name")
+        age_col = find_column(df, "Age")
+        tenure_col = find_column(df, "Tenure")
+        sa_col = find_sum_assured_column(df)
 
-            # If no direct Tenure column, try deriving it from Start/End Date columns
-            if not tenure_col:
-                start_col, end_col = find_date_columns(df)
-                if start_col and end_col:
-                    st.info(
-                        f"ℹ️ No Tenure column found — deriving Tenure in years from "
-                        f"'{start_col}' and '{end_col}'."
-                    )
-                    df["Tenure (Derived)"] = derive_tenure_years(df[start_col], df[end_col])
-                    tenure_col = "Tenure (Derived)"
-
-            if not name_col or not age_col or not tenure_col:
-                raise ValueError(
-                    "Excel must contain mandatory columns: Name, Age, and either Tenure "
-                    "or (Loan Start Date + Loan End Date)."
+        # If no direct Tenure column, try deriving it from Start/End Date columns
+        if not tenure_col:
+            start_col, end_col = find_date_columns(df)
+            if start_col and end_col:
+                st.info(
+                    f"ℹ️ No Tenure column found — deriving Tenure in years from "
+                    f"'{start_col}' and '{end_col}'."
                 )
-            if not sa_col:
-                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount') or, failing that, a 'Loan Outstanding' column.")
+                df["Tenure (Derived)"] = derive_tenure_years(df[start_col], df[end_col])
+                tenure_col = "Tenure (Derived)"
 
-            df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
-            df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
-            df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
-
-            if df[tenure_col].dropna().median() > 30:
-                st.info("ℹ️ Tenure values look like months — auto-converting to years.")
-                df[tenure_col] = (df[tenure_col] / 12).round(0).astype('Int64')
-            else:
-                df[tenure_col] = df[tenure_col].round(0).astype('Int64')
-
-            df[age_col] = df[age_col].round(0).astype('Int64')
-            df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
-
-            premiums = []
-            statuses = []
-            for idx, row in df.iterrows():
-                try:
-                    r_age = int(row[age_col])
-                    r_tenure = int(row[tenure_col])
-                    r_sa = float(row[sa_col])
-                    r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
-                    r_final = apply_loader_and_gst(r_base, loader_pct)
-                    premium = round(r_final * (r_sa / 100000), 2)
-                    premiums.append(premium)
-                    statuses.append("✅")
-                except Exception as e:
-                    premiums.append(None)
-                    statuses.append(f"❌ {e}")
-
-            df["Premium"] = premiums
-            df["Status"] = statuses
-
-            core_cols = [name_col, age_col, tenure_col, sa_col, "Premium"]
-            extra_cols = [c for c in df.columns if c not in core_cols]
-            df = df[core_cols + extra_cols]
-
-            total_premium = pd.to_numeric(pd.Series(premiums), errors='coerce').sum()
-            st.metric("💰 Grand Total Premium", f"₹ {total_premium:,.2f}")
-
-            st.subheader("Rate Lookup Output")
-            st.dataframe(df, use_container_width=True)
-
-            total_row = {c: "" for c in df.columns}
-            total_row[name_col] = "TOTAL PREMIUM"
-            total_row["Premium"] = round(total_premium, 2)
-            df_out = pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
-
-            output_file = "Rate_Output.xlsx"
-            df_out.to_excel(output_file, index=False)
-
-            with open(output_file, "rb") as file:
-                st.download_button(
-                    label="⬇ Download Output Excel",
-                    data=file,
-                    file_name=output_file,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
-        # ============================================
-        # JOINT LIFE
-        # ============================================
-        else:
-            mapping = map_joint_columns(df)
-            sa_col = find_sum_assured_column(df)
-
-            # If Tenure columns aren't present for one/both borrowers, try to derive a
-            # shared Tenure from Loan Start Date + Loan End Date (loan tenure is shared).
-            if ('main', 'tenure') not in mapping or ('co', 'tenure') not in mapping:
-                start_col, end_col = find_date_columns(df)
-                if start_col and end_col:
-                    st.info(
-                        f"ℹ️ No Tenure column found for one/both borrowers — deriving a shared "
-                        f"Tenure in years from '{start_col}' and '{end_col}'."
-                    )
-                    df["Tenure (Derived)"] = derive_tenure_years(df[start_col], df[end_col])
-                    if ('main', 'tenure') not in mapping:
-                        mapping[('main', 'tenure')] = "Tenure (Derived)"
-                    if ('co', 'tenure') not in mapping:
-                        mapping[('co', 'tenure')] = "Tenure (Derived)"
-
-            required_keys = [
-                ('main', 'name'), ('main', 'age'), ('main', 'tenure'),
-                ('co', 'name'), ('co', 'age'), ('co', 'tenure'),
-            ]
-            missing = [f"{p.capitalize()} Borrower {f.capitalize()}" for (p, f) in required_keys if (p, f) not in mapping]
-
-            if missing:
-                raise ValueError(
-                    "Could not detect these mandatory columns: " + ", ".join(missing) +
-                    ". Please make sure your Excel has Main Borrower & Co Borrower "
-                    "Name/Age columns, and either Tenure columns or Loan Start Date + "
-                    "Loan End Date columns (any reasonable naming works, e.g. "
-                    "'Main Borrower Age', 'MB Age', 'Age1')."
-                )
-            if not sa_col:
-                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount') or, failing that, a 'Loan Outstanding' column.")
-
-            main_name_col = mapping[('main', 'name')]
-            main_age_col = mapping[('main', 'age')]
-            main_tenure_col = mapping[('main', 'tenure')]
-            co_name_col = mapping[('co', 'name')]
-            co_age_col = mapping[('co', 'age')]
-            co_tenure_col = mapping[('co', 'tenure')]
-
-            for c in [main_age_col, main_tenure_col, co_age_col, co_tenure_col]:
-                df[c] = pd.to_numeric(df[c], errors='coerce')
-
-            df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
-
-            # Skip the months->years auto-convert for a derived tenure column — it's
-            # already in years.
-            for tcol, label in [(main_tenure_col, "Main Borrower Tenure"), (co_tenure_col, "Co Borrower Tenure")]:
-                if tcol == "Tenure (Derived)":
-                    df[tcol] = df[tcol].round(0).astype('Int64')
-                    continue
-                if df[tcol].dropna().median() > 30:
-                    st.info(f"ℹ️ {label} values look like months — auto-converting to years.")
-                    df[tcol] = (df[tcol] / 12).round(0).astype('Int64')
-                else:
-                    df[tcol] = df[tcol].round(0).astype('Int64')
-
-            df[main_age_col] = df[main_age_col].round(0).astype('Int64')
-            df[co_age_col] = df[co_age_col].round(0).astype('Int64')
-            df[main_tenure_col] = df[main_tenure_col].clip(lower=min_t, upper=max_t)
-            df[co_tenure_col] = df[co_tenure_col].clip(lower=min_t, upper=max_t)
-
-            st.info(
-                f"ℹ️ Loan tenure is shared between borrowers — if either borrower's age + tenure "
-                f"would exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers."
+        if not name_col or not age_col or not tenure_col:
+            raise ValueError(
+                "Excel must contain mandatory columns: Name, Age, and either Tenure "
+                "or (Loan Start Date + Loan End Date)."
             )
+        if not sa_col:
+            raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount') or, failing that, a 'Loan Outstanding' column.")
 
-            premium_main_list = []
-            premium_co_list = []
-            total_list = []
-            tenure_used_list = []
-            statuses = []
+        df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
+        df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
+        df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
 
-            for idx, row in df.iterrows():
-                row_status = "✅"
-                p_main = None
-                p_co = None
-                eff_tenure = None
-                try:
-                    m_age = int(row[main_age_col])
-                    m_tenure = int(row[main_tenure_col])
-                    c_age = int(row[co_age_col])
-                    c_tenure = int(row[co_tenure_col])
-                    row_sa = float(row[sa_col])
+        if df[tenure_col].dropna().median() > 30:
+            st.info("ℹ️ Tenure values look like months — auto-converting to years.")
+            df[tenure_col] = (df[tenure_col] / 12).round(0).astype('Int64')
+        else:
+            df[tenure_col] = df[tenure_col].round(0).astype('Int64')
 
-                    # Loan tenure is shared — cap it so neither borrower's age + tenure
-                    # exceeds MAX_AGE, then use the same (lower) tenure for both.
-                    main_age_cap = MAX_AGE - m_age
-                    co_age_cap = MAX_AGE - c_age
-                    eff_tenure = min(m_tenure, c_tenure, main_age_cap, co_age_cap)
+        df[age_col] = df[age_col].round(0).astype('Int64')
+        df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
 
-                    if eff_tenure < min_t:
-                        raise ValueError(
-                            f"Effective tenure ({eff_tenure} yrs) below minimum allowed "
-                            f"({min_t} yrs) due to age limit (max age {MAX_AGE})"
-                        )
+        premiums = []
+        statuses = []
+        for idx, row in df.iterrows():
+            try:
+                r_age = int(row[age_col])
+                r_tenure = int(row[tenure_col])
+                r_sa = float(row[sa_col])
+                r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
+                r_final = apply_loader_and_gst(r_base, loader_pct)
+                premium = round(r_final * (r_sa / 100000), 2)
+                premiums.append(premium)
+                statuses.append("✅")
+            except Exception as e:
+                premiums.append(None)
+                statuses.append(f"❌ {e}")
 
-                    rate_main_base = get_rate(df_rates, tenure_map, m_age, eff_tenure)
-                    rate_main_final = apply_loader_and_gst(rate_main_base, loader_pct)
-                    p_main = round(rate_main_final * (row_sa / 100000), 2)
+        df["Premium"] = premiums
+        df["Status"] = statuses
 
-                    rate_co_base = get_rate(df_rates, tenure_map, c_age, eff_tenure)
-                    rate_co_final = apply_loader_and_gst(rate_co_base, loader_pct)
-                    p_co = round(rate_co_final * (row_sa / 100000), 2)
+        core_cols = [name_col, age_col, tenure_col, sa_col, "Premium"]
+        extra_cols = [c for c in df.columns if c not in core_cols]
+        df = df[core_cols + extra_cols]
 
-                    if eff_tenure < max(m_tenure, c_tenure):
-                        row_status = f"✅ (tenure capped to {eff_tenure} yrs due to age limit)"
-                except Exception as e:
-                    row_status = f"❌ {e}"
+        total_premium = pd.to_numeric(pd.Series(premiums), errors='coerce').sum()
+        st.metric("💰 Grand Total Premium", f"₹ {total_premium:,.2f}")
 
-                premium_main_list.append(p_main)
-                premium_co_list.append(p_co)
-                total_list.append(round(p_main + p_co, 2) if (p_main is not None and p_co is not None) else None)
-                tenure_used_list.append(eff_tenure)
-                statuses.append(row_status)
+        st.subheader("Rate Lookup Output")
+        st.dataframe(df, use_container_width=True)
 
-            df["Main Borrower Premium"] = premium_main_list
-            df["Co Borrower Premium"] = premium_co_list
-            df["Tenure Used"] = tenure_used_list
-            df["Total Premium"] = total_list
-            df["Status"] = statuses
+        total_row = {c: "" for c in df.columns}
+        total_row[name_col] = "TOTAL PREMIUM"
+        total_row["Premium"] = round(total_premium, 2)
+        df_out = pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
 
-            core_cols = [
-                main_name_col, main_age_col, main_tenure_col, "Main Borrower Premium",
-                co_name_col, co_age_col, co_tenure_col, "Co Borrower Premium",
-                sa_col, "Tenure Used", "Total Premium"
-            ]
-            # De-duplicate in case main/co tenure both point at the same derived column
-            core_cols = list(dict.fromkeys(core_cols))
-            extra_cols = [c for c in df.columns if c not in core_cols]
-            df_display = df[core_cols + extra_cols]
+        output_file = "Rate_Output.xlsx"
+        df_out.to_excel(output_file, index=False)
 
-            grand_total = pd.to_numeric(pd.Series(total_list), errors='coerce').sum()
-            st.metric("💰 Grand Total Premium", f"₹ {grand_total:,.2f}")
-
-            st.subheader("Rate Lookup Output")
-            st.dataframe(df_display, use_container_width=True)
-
-            # ---- Build output with TOTAL PREMIUM row at the bottom ----
-            total_row = {c: "" for c in df_display.columns}
-            total_row[main_name_col] = "TOTAL PREMIUM"
-            total_row["Total Premium"] = round(grand_total, 2)
-            df_out = pd.concat([df_display, pd.DataFrame([total_row])], ignore_index=True)
-
-            output_file = "Rate_Output.xlsx"
-
-            # Write data starting from row 3 (1-indexed), leaving rows 1-2 for the 2-row header
-            df_out.to_excel(output_file, index=False, header=False, startrow=2, sheet_name="Sheet1")
-
-            wb = load_workbook(output_file)
-            ws = wb["Sheet1"]
-
-            bold = Font(bold=True)
-            center = Alignment(horizontal="center", vertical="center")
-
-            n_extra = len(extra_cols)
-            # Column positions (1-indexed): Main group = cols 1-4 (Name, Age, Tenure, Premium),
-            # Co group = cols 5-8 (Name, Age, Tenure, Premium),
-            # Sum Assured = col 9, Tenure Used = col 10, Total Premium = col 11, extras start at col 12
-            main_start, main_end = 1, 4
-            co_start, co_end = 5, 8
-            sa_out_col = 9
-            tenure_used_col = 10
-            total_col = 11
-            extra_start = 12
-
-            # Row 2: sub-headers (actual field names)
-            row2_labels = ["Name", "Age", "Tenure", "Premium", "Name", "Age", "Tenure", "Premium",
-                           "Sum Assured", "Tenure Used", "Total Premium"] + extra_cols
-            for idx, label in enumerate(row2_labels, start=1):
-                cell = ws.cell(row=2, column=idx, value=label)
-                cell.font = bold
-                cell.alignment = center
-
-            # Row 1: group headers (merged)
-            ws.merge_cells(start_row=1, start_column=main_start, end_row=1, end_column=main_end)
-            ws.cell(row=1, column=main_start, value="MAIN BORROWER").font = bold
-            ws.cell(row=1, column=main_start).alignment = center
-
-            ws.merge_cells(start_row=1, start_column=co_start, end_row=1, end_column=co_end)
-            ws.cell(row=1, column=co_start, value="CO BORROWER").font = bold
-            ws.cell(row=1, column=co_start).alignment = center
-
-            ws.merge_cells(start_row=1, start_column=sa_out_col, end_row=2, end_column=sa_out_col)
-            ws.cell(row=1, column=sa_out_col, value="SUM ASSURED").font = bold
-            ws.cell(row=1, column=sa_out_col).alignment = center
-            ws.cell(row=2, column=sa_out_col, value=None)
-
-            ws.merge_cells(start_row=1, start_column=tenure_used_col, end_row=2, end_column=tenure_used_col)
-            ws.cell(row=1, column=tenure_used_col, value="TENURE USED").font = bold
-            ws.cell(row=1, column=tenure_used_col).alignment = center
-            ws.cell(row=2, column=tenure_used_col, value=None)
-
-            ws.merge_cells(start_row=1, start_column=total_col, end_row=2, end_column=total_col)
-            ws.cell(row=1, column=total_col, value="TOTAL PREMIUM").font = bold
-            ws.cell(row=1, column=total_col).alignment = center
-            # remove duplicate row2 label under merged Total Premium cell
-            ws.cell(row=2, column=total_col, value=None)
-
-            if n_extra:
-                ws.merge_cells(start_row=1, start_column=extra_start, end_row=1, end_column=extra_start + n_extra - 1)
-                ws.cell(row=1, column=extra_start, value="ADDITIONAL INFO").font = bold
-                ws.cell(row=1, column=extra_start).alignment = center
-
-            # Auto width
-            for col_idx in range(1, total_col + n_extra + 1):
-                col_letter = get_column_letter(col_idx)
-                ws.column_dimensions[col_letter].width = 18
-
-            wb.save(output_file)
-
-            with open(output_file, "rb") as file:
-                st.download_button(
-                    label="⬇ Download Output Excel",
-                    data=file,
-                    file_name=output_file,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+        with open(output_file, "rb") as file:
+            st.download_button(
+                label="⬇ Download Output Excel",
+                data=file,
+                file_name=output_file,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
     except Exception as e:
         st.error(f"Error: {e}")
