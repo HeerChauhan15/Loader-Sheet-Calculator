@@ -8,7 +8,7 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 
 st.set_page_config(
-    page_title="Insurance Premium Calculator",
+    page_title="Premium Calculator",
     page_icon="💰",
     layout="wide"
 )
@@ -17,10 +17,14 @@ st.title("💰 Aviva GCL Insurance Premium Calculator")
 st.markdown("Select plan details below")
 
 FILE_MAP = {
-    ("Single Life", "Home Loan"): "Homeloan Single Life.xlsx",
-    ("Single Life", "LAP"):       "LAP Single Life.xlsx",
-    ("Joint Life",  "Home Loan"): "Homeloan Joint Life.xlsx",
-    ("Joint Life",  "LAP"):       "LAP Joint Life.xlsx",
+    ("Level",    "Single Life", "Home Loan"): "Homeloan Single Life.xlsx",
+    ("Level",    "Single Life", "LAP"):       "LAP Single Life.xlsx",
+    ("Level",    "Joint Life",  "Home Loan"): "Homeloan Joint Life.xlsx",
+    ("Level",    "Joint Life",  "LAP"):       "LAP Joint Life.xlsx",
+    ("Reducing", "Single Life", "Home Loan"): "Reducing- Homeloan.xlsx",
+    ("Reducing", "Single Life", "LAP"):       "Reducing- LAP.xlsx",
+    ("Reducing", "Joint Life",  "Home Loan"): "Reducing- Homeloan.xlsx",
+    ("Reducing", "Joint Life",  "LAP"):       "Reducing- LAP.xlsx",
 }
 
 # Maximum age allowed for any borrower at the end of the loan tenure.
@@ -43,8 +47,8 @@ def apply_loader_and_gst(base_rate, loader_pct, gst_pct=GST_RATE_FIXED):
     return final_rate
 
 
-def load_rate_table(life_type, loan_type):
-    fname = FILE_MAP[(life_type, loan_type)]
+def load_rate_table(cover_type, life_type, loan_type):
+    fname = FILE_MAP[(cover_type, life_type, loan_type)]
     if not os.path.exists(fname):
         raise FileNotFoundError(
             f"File not found: '{fname}' — Please make sure this file is in the GitHub repo."
@@ -198,15 +202,21 @@ def map_joint_columns(df):
 # DROPDOWNS
 # ============================================
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     life_type = st.selectbox("Select Life Type", ["Single Life", "Joint Life"])
 with col2:
     loan_type = st.selectbox("Select Loan Type", ["Home Loan", "LAP"])
+with col3:
+    cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
+
+segment = None
+if life_type == "Joint Life":
+    segment = st.selectbox("Select Segment", ["Main Life", "Co Life"])
 
 # ============================================
 # SHARED LOADER % — applied to every rate (Manual Single, Manual Joint, Bulk)
-# before computing premium. GST @ 18% is then applied automatically on top.
+# before computing premium. GST @ 18% is then added automatically on top.
 # ============================================
 st.subheader("⚙️ Loader Setting")
 loader_pct_input = st.number_input(
@@ -271,12 +281,12 @@ if life_type == "Single Life":
 
     if st.button("Get Rate", type="primary"):
         try:
-            df_rates, tenure_map = load_rate_table(life_type, loan_type)
+            df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
             base_rate = get_rate(df_rates, tenure_map, age, tenure)
             final_rate = apply_loader_and_gst(base_rate, loader_pct)
             premium = final_rate * (sum_assured_manual_single / 100000)
             st.success(
-                f"✅ {life_type} | {loan_type} | Age {age} | Tenure {tenure} yrs | "
+                f"✅ {life_type} | {loan_type} | {cover_type} Cover | Age {age} | Tenure {tenure} yrs | "
                 f"Sum Assured ₹{sum_assured_manual_single:,} | Loader {loader_pct}% | GST {GST_RATE_FIXED}%"
             )
             st.metric("Premium", f"₹ {premium:,.2f}")
@@ -317,7 +327,7 @@ else:
 
     if st.button("Get Rate", type="primary"):
         try:
-            df_rates, tenure_map = load_rate_table(life_type, loan_type)
+            df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
             main_age_cap = MAX_AGE - main_age
             co_age_cap = MAX_AGE - co_age
             effective_tenure = min(main_tenure, co_tenure, main_age_cap, co_age_cap)
@@ -346,7 +356,8 @@ else:
                 )
 
             st.success(
-                f"✅ {life_type} | {loan_type} | Sum Assured ₹{sum_assured_manual_joint:,} | "
+                f"✅ {life_type} | {loan_type} | {cover_type} Cover | Segment: {segment} | "
+                f"Sum Assured ₹{sum_assured_manual_joint:,} | "
                 f"Loader {loader_pct}% | GST {GST_RATE_FIXED}% | "
                 f"Main Borrower: Age {main_age}, Tenure used {effective_tenure} yrs | "
                 f"Co Borrower: Age {co_age}, Tenure used {effective_tenure} yrs"
@@ -389,7 +400,7 @@ else:
     )
 
 st.caption(f"Each row uses its own Sum Assured from the Excel (must be between ₹{sa_min:,} and ₹{sa_max:,}).")
-st.warning("⚠️ Please make sure you have selected **Life Type** and **Loan Type** above before uploading your Excel file.")
+st.warning("⚠️ Please make sure you have selected **Life Type**, **Loan Type**, and **Type of Cover** above before uploading your Excel file.")
 
 uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
@@ -406,7 +417,7 @@ if uploaded_file is not None:
         else:
             min_t, max_t = 2, 10
 
-        df_rates, tenure_map = load_rate_table(life_type, loan_type)
+        df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
 
         # ============================================
         # SINGLE LIFE
