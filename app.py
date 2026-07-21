@@ -190,20 +190,13 @@ st.divider()
 
 st.subheader("🔢 Manual Rate Lookup")
 
-if loan_type == "Home Loan":
-    min_tenure, max_tenure = 5, 25
-else:
-    min_tenure, max_tenure = 2, 10
-
 col3, col4 = st.columns(2)
 with col3:
-    age = st.number_input("Enter Age", min_value=18, max_value=60, value=30, step=1)
+    age = st.number_input("Enter Age", max_value=65, value=30, step=1)
 with col4:
     tenure = st.number_input(
         "Enter Tenure",
-        min_value=min_tenure,
-        max_value=max_tenure,
-        value=min_tenure,
+        value=5,
         step=1
     )
     st.caption("📅 Tenure is in Years")
@@ -259,11 +252,6 @@ if uploaded_file is not None:
         st.subheader("Uploaded Data Preview")
         st.dataframe(df.head())
 
-        if loan_type == "Home Loan":
-            min_t, max_t = 5, 25
-        else:
-            min_t, max_t = 2, 10
-
         df_rates, tenure_map = load_rate_table(cover_type, life_type, loan_type)
 
         name_col = find_column(df, "Name")
@@ -310,10 +298,10 @@ if uploaded_file is not None:
                 r_tenure = int(row[tenure_col]) if pd.notna(row[tenure_col]) else None
                 r_sa = float(row[sa_col])
 
-                if r_age is None or r_age < 18 or r_age > 60:
-                    raise ValueError("Age must be between 18 and 60")
-                if r_tenure is None or r_tenure < min_t or r_tenure > max_t:
-                    raise ValueError(f"Tenure must be between {min_t} and {max_t} yrs")
+                if r_age is None:
+                    raise ValueError("Age is missing")
+                if r_tenure is None:
+                    raise ValueError("Tenure is missing")
 
                 r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
                 r_final = apply_loader_and_gst(r_base, loader_pct)
