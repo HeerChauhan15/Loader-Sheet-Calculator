@@ -191,7 +191,7 @@ st.divider()
 st.subheader("🔢 Manual Rate Lookup")
 
 if loan_type == "Home Loan":
-    min_tenure, max_tenure = 5, 10
+    min_tenure, max_tenure = 5, 25
 else:
     min_tenure, max_tenure = 2, 10
 
@@ -260,7 +260,7 @@ if uploaded_file is not None:
         st.dataframe(df.head())
 
         if loan_type == "Home Loan":
-            min_t, max_t = 5, 10
+            min_t, max_t = 5, 25
         else:
             min_t, max_t = 2, 10
 
@@ -301,16 +301,20 @@ if uploaded_file is not None:
             df[tenure_col] = df[tenure_col].round(0).astype('Int64')
 
         df[age_col] = df[age_col].round(0).astype('Int64')
-        df[age_col] = df[age_col].clip(lower=18, upper=60)
-        df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
 
         premiums = []
         statuses = []
         for idx, row in df.iterrows():
             try:
-                r_age = int(row[age_col])
-                r_tenure = int(row[tenure_col])
+                r_age = int(row[age_col]) if pd.notna(row[age_col]) else None
+                r_tenure = int(row[tenure_col]) if pd.notna(row[tenure_col]) else None
                 r_sa = float(row[sa_col])
+
+                if r_age is None or r_age < 18 or r_age > 60:
+                    raise ValueError("Age must be between 18 and 60")
+                if r_tenure is None or r_tenure < min_t or r_tenure > max_t:
+                    raise ValueError(f"Tenure must be between {min_t} and {max_t} yrs")
+
                 r_base = get_rate(df_rates, tenure_map, r_age, r_tenure)
                 r_final = apply_loader_and_gst(r_base, loader_pct)
                 premium = round(r_final * (r_sa / 100000), 2)
