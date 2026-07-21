@@ -193,7 +193,7 @@ st.subheader("🔢 Manual Rate Lookup")
 if loan_type == "Home Loan":
     min_tenure, max_tenure = 5, 25
 else:
-    min_tenure, max_tenure = 2, 10
+    min_tenure, max_tenure = 1, 10
 
 col3, col4 = st.columns(2)
 with col3:
