@@ -191,13 +191,13 @@ st.divider()
 st.subheader("🔢 Manual Rate Lookup")
 
 if loan_type == "Home Loan":
-    min_tenure, max_tenure = 5, 25
+    min_tenure, max_tenure = 5, 10
 else:
     min_tenure, max_tenure = 2, 10
 
 col3, col4 = st.columns(2)
 with col3:
-    age = st.number_input("Enter Age", min_value=18, max_value=65, value=30, step=1)
+    age = st.number_input("Enter Age", min_value=18, max_value=60, value=30, step=1)
 with col4:
     tenure = st.number_input(
         "Enter Tenure",
@@ -260,7 +260,7 @@ if uploaded_file is not None:
         st.dataframe(df.head())
 
         if loan_type == "Home Loan":
-            min_t, max_t = 5, 25
+            min_t, max_t = 5, 10
         else:
             min_t, max_t = 2, 10
 
@@ -301,6 +301,7 @@ if uploaded_file is not None:
             df[tenure_col] = df[tenure_col].round(0).astype('Int64')
 
         df[age_col] = df[age_col].round(0).astype('Int64')
+        df[age_col] = df[age_col].clip(lower=18, upper=60)
         df[tenure_col] = df[tenure_col].clip(lower=min_t, upper=max_t)
 
         premiums = []
