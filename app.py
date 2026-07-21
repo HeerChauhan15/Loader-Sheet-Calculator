@@ -8,7 +8,7 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 
 st.set_page_config(
-    page_title="Premium Calculator",
+    page_title="Insurance Premium Calculator",
     page_icon="💰",
     layout="wide"
 )
@@ -103,10 +103,17 @@ def find_column(df, target):
 
 
 def find_sum_assured_column(df):
-    """Flexibly detect a Sum Assured / Sum Insured / Loan Amount column."""
+    """
+    Flexibly detect a Sum Assured / Sum Insured / Loan Amount column.
+    Falls back to Loan Outstanding if no Sum Assured-type column is found.
+    """
     for col in df.columns:
         norm = re.sub(r'[\s_\-]+', '', str(col).lower())
         if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
+            return col
+    for col in df.columns:
+        norm = re.sub(r'[\s_\-]+', '', str(col).lower())
+        if 'loanoutstanding' in norm or 'outstandingamount' in norm or 'outstandingloan' in norm or norm == 'outstanding':
             return col
     return None
 
@@ -365,16 +372,18 @@ st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 if life_type == "Single Life":
     st.markdown(
-        "Your Excel must have at least: **Name**, **Age**, **Sum Assured**, and either a "
-        "**Tenure** column (in years) or **Loan Start Date** + **Loan End Date** columns "
-        "(Tenure will be auto-calculated from the dates)."
+        "Your Excel must have at least: **Name**, **Age**, **Sum Assured** (or **Loan "
+        "Outstanding** if Sum Assured isn't present), and either a **Tenure** column (in "
+        "years) or **Loan Start Date** + **Loan End Date** columns (Tenure will be "
+        "auto-calculated from the dates)."
     )
 else:
     st.markdown(
         "Your Excel must have at least: **Main Borrower** (Name, Age) and "
-        "**Co Borrower** (Name, Age), plus a **Sum Assured** column, and either "
-        "**Tenure** columns (in years) or **Loan Start Date** + **Loan End Date** columns "
-        "(Tenure will be auto-calculated from the dates and shared between both borrowers). "
+        "**Co Borrower** (Name, Age), plus a **Sum Assured** column (or **Loan "
+        "Outstanding** if Sum Assured isn't present), and either **Tenure** columns "
+        "(in years) or **Loan Start Date** + **Loan End Date** columns (Tenure will be "
+        "auto-calculated from the dates and shared between both borrowers). "
         f"If either borrower's age + tenure would exceed {MAX_AGE} years, the tenure is "
         f"automatically capped for both borrowers."
     )
@@ -425,7 +434,7 @@ if uploaded_file is not None:
                     "or (Loan Start Date + Loan End Date)."
                 )
             if not sa_col:
-                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount').")
+                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount') or, failing that, a 'Loan Outstanding' column.")
 
             df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
             df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
@@ -522,7 +531,7 @@ if uploaded_file is not None:
                     "'Main Borrower Age', 'MB Age', 'Age1')."
                 )
             if not sa_col:
-                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount').")
+                raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount') or, failing that, a 'Loan Outstanding' column.")
 
             main_name_col = mapping[('main', 'name')]
             main_age_col = mapping[('main', 'age')]
