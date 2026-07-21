@@ -8,7 +8,7 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 
 st.set_page_config(
-    page_title="Insurance Premium Calculator",
+    page_title="Premium Calculator",
     page_icon="💰",
     layout="wide"
 )
@@ -109,6 +109,33 @@ def find_sum_assured_column(df):
         if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
             return col
     return None
+
+
+def find_date_columns(df):
+    """
+    Flexibly detect Loan Start Date / Loan End Date (or Maturity Date) columns,
+    used to derive Tenure in years when no direct Tenure column is present.
+    """
+    start_col = None
+    end_col = None
+    for col in df.columns:
+        norm = re.sub(r'[\s_\-]+', '', str(col).lower())
+        if 'date' not in norm:
+            continue
+        if start_col is None and ('startdate' in norm or 'disbursementdate' in norm or 'disbursaldate' in norm):
+            start_col = col
+        elif end_col is None and ('enddate' in norm or 'maturitydate' in norm or 'closuredate' in norm):
+            end_col = col
+    return start_col, end_col
+
+
+def derive_tenure_years(start_series, end_series):
+    """Compute whole-year tenure from Start Date and End Date columns (handles DD-MM-YYYY)."""
+    start = pd.to_datetime(start_series, errors='coerce', dayfirst=True)
+    end = pd.to_datetime(end_series, errors='coerce', dayfirst=True)
+    days = (end - start).dt.days
+    years = (days / 365.25).round(0)
+    return years.astype('Int64')
 
 
 def _normalize(s):
@@ -338,14 +365,18 @@ st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 if life_type == "Single Life":
     st.markdown(
-        "Your Excel must have at least: **Name**, **Age**, **Tenure** (in years), **Sum Assured**."
+        "Your Excel must have at least: **Name**, **Age**, **Sum Assured**, and either a "
+        "**Tenure** column (in years) or **Loan Start Date** + **Loan End Date** columns "
+        "(Tenure will be auto-calculated from the dates)."
     )
 else:
     st.markdown(
-        "Your Excel must have at least: **Main Borrower** (Name, Age, Tenure in years) and "
-        "**Co Borrower** (Name, Age, Tenure in years), plus a **Sum Assured** column. "
-        f"Loan tenure is shared between borrowers — if either borrower's age + tenure would "
-        f"exceed {MAX_AGE} years, the tenure is automatically capped for both borrowers."
+        "Your Excel must have at least: **Main Borrower** (Name, Age) and "
+        "**Co Borrower** (Name, Age), plus a **Sum Assured** column, and either "
+        "**Tenure** columns (in years) or **Loan Start Date** + **Loan End Date** columns "
+        "(Tenure will be auto-calculated from the dates and shared between both borrowers). "
+        f"If either borrower's age + tenure would exceed {MAX_AGE} years, the tenure is "
+        f"automatically capped for both borrowers."
     )
 
 st.caption(f"Each row uses its own Sum Assured from the Excel (must be between ₹{sa_min:,} and ₹{sa_max:,}).")
@@ -377,8 +408,22 @@ if uploaded_file is not None:
             tenure_col = find_column(df, "Tenure")
             sa_col = find_sum_assured_column(df)
 
+            # If no direct Tenure column, try deriving it from Start/End Date columns
+            if not tenure_col:
+                start_col, end_col = find_date_columns(df)
+                if start_col and end_col:
+                    st.info(
+                        f"ℹ️ No Tenure column found — deriving Tenure in years from "
+                        f"'{start_col}' and '{end_col}'."
+                    )
+                    df["Tenure (Derived)"] = derive_tenure_years(df[start_col], df[end_col])
+                    tenure_col = "Tenure (Derived)"
+
             if not name_col or not age_col or not tenure_col:
-                raise ValueError("Excel must contain mandatory columns: Name, Age, Tenure")
+                raise ValueError(
+                    "Excel must contain mandatory columns: Name, Age, and either Tenure "
+                    "or (Loan Start Date + Loan End Date)."
+                )
             if not sa_col:
                 raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount').")
 
@@ -447,6 +492,21 @@ if uploaded_file is not None:
             mapping = map_joint_columns(df)
             sa_col = find_sum_assured_column(df)
 
+            # If Tenure columns aren't present for one/both borrowers, try to derive a
+            # shared Tenure from Loan Start Date + Loan End Date (loan tenure is shared).
+            if ('main', 'tenure') not in mapping or ('co', 'tenure') not in mapping:
+                start_col, end_col = find_date_columns(df)
+                if start_col and end_col:
+                    st.info(
+                        f"ℹ️ No Tenure column found for one/both borrowers — deriving a shared "
+                        f"Tenure in years from '{start_col}' and '{end_col}'."
+                    )
+                    df["Tenure (Derived)"] = derive_tenure_years(df[start_col], df[end_col])
+                    if ('main', 'tenure') not in mapping:
+                        mapping[('main', 'tenure')] = "Tenure (Derived)"
+                    if ('co', 'tenure') not in mapping:
+                        mapping[('co', 'tenure')] = "Tenure (Derived)"
+
             required_keys = [
                 ('main', 'name'), ('main', 'age'), ('main', 'tenure'),
                 ('co', 'name'), ('co', 'age'), ('co', 'tenure'),
@@ -457,7 +517,8 @@ if uploaded_file is not None:
                 raise ValueError(
                     "Could not detect these mandatory columns: " + ", ".join(missing) +
                     ". Please make sure your Excel has Main Borrower & Co Borrower "
-                    "Name/Age/Tenure columns (any reasonable naming works, e.g. "
+                    "Name/Age columns, and either Tenure columns or Loan Start Date + "
+                    "Loan End Date columns (any reasonable naming works, e.g. "
                     "'Main Borrower Age', 'MB Age', 'Age1')."
                 )
             if not sa_col:
@@ -475,7 +536,12 @@ if uploaded_file is not None:
 
             df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
 
+            # Skip the months->years auto-convert for a derived tenure column — it's
+            # already in years.
             for tcol, label in [(main_tenure_col, "Main Borrower Tenure"), (co_tenure_col, "Co Borrower Tenure")]:
+                if tcol == "Tenure (Derived)":
+                    df[tcol] = df[tcol].round(0).astype('Int64')
+                    continue
                 if df[tcol].dropna().median() > 30:
                     st.info(f"ℹ️ {label} values look like months — auto-converting to years.")
                     df[tcol] = (df[tcol] / 12).round(0).astype('Int64')
@@ -552,6 +618,8 @@ if uploaded_file is not None:
                 co_name_col, co_age_col, co_tenure_col, "Co Borrower Premium",
                 sa_col, "Tenure Used", "Total Premium"
             ]
+            # De-duplicate in case main/co tenure both point at the same derived column
+            core_cols = list(dict.fromkeys(core_cols))
             extra_cols = [c for c in df.columns if c not in core_cols]
             df_display = df[core_cols + extra_cols]
 
