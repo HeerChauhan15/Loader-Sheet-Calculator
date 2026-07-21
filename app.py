@@ -8,7 +8,7 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 
 st.set_page_config(
-    page_title="Premium Calculator",
+    page_title="Insurance Premium Calculator",
     page_icon="💰",
     layout="wide"
 )
@@ -202,17 +202,16 @@ def map_joint_columns(df):
 # DROPDOWNS
 # ============================================
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     life_type = st.selectbox("Select Life Type", ["Single Life", "Joint Life"])
 with col2:
     loan_type = st.selectbox("Select Loan Type", ["Home Loan", "LAP"])
-with col3:
-    cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
 
-segment = None
 if life_type == "Joint Life":
-    segment = st.selectbox("Select Segment", ["Main Life", "Co Life"])
+    cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
+else:
+    cover_type = "Level"
 
 # ============================================
 # SHARED LOADER % — applied to every rate (Manual Single, Manual Joint, Bulk)
@@ -356,7 +355,7 @@ else:
                 )
 
             st.success(
-                f"✅ {life_type} | {loan_type} | {cover_type} Cover | Segment: {segment} | "
+                f"✅ {life_type} | {loan_type} | {cover_type} Cover | "
                 f"Sum Assured ₹{sum_assured_manual_joint:,} | "
                 f"Loader {loader_pct}% | GST {GST_RATE_FIXED}% | "
                 f"Main Borrower: Age {main_age}, Tenure used {effective_tenure} yrs | "
