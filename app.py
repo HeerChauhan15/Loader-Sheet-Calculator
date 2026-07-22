@@ -116,33 +116,6 @@ def find_sum_assured_column(df):
     return None
 
 
-def find_date_columns(df):
-    """
-    Flexibly detect Loan Start Date / Loan End Date (or Maturity Date) columns,
-    used to derive Tenure in years when no direct Tenure column is present.
-    """
-    start_col = None
-    end_col = None
-    for col in df.columns:
-        norm = re.sub(r'[\s_\-]+', '', str(col).lower())
-        if 'date' not in norm:
-            continue
-        if start_col is None and ('startdate' in norm or 'disbursementdate' in norm or 'disbursaldate' in norm):
-            start_col = col
-        elif end_col is None and ('enddate' in norm or 'maturitydate' in norm or 'closuredate' in norm):
-            end_col = col
-    return start_col, end_col
-
-
-def derive_tenure_years(start_series, end_series):
-    """Compute whole-year tenure from Start Date and End Date columns (handles DD-MM-YYYY)."""
-    start = pd.to_datetime(start_series, errors='coerce', dayfirst=True)
-    end = pd.to_datetime(end_series, errors='coerce', dayfirst=True)
-    days = (end - start).dt.days
-    years = (days / 365.25).round(0)
-    return years.astype('Int64')
-
-
 # ============================================
 # DROPDOWNS
 # ============================================
@@ -197,7 +170,7 @@ else:
 
 col3, col4 = st.columns(2)
 with col3:
-    age = st.number_input("Enter Age", min_value=18, max_value=60, value=30, step=1)
+    age = st.number_input("Enter Age", min_value=18, max_value=65, value=30, step=1)
 with col4:
     tenure = st.number_input(
         "Enter Tenure",
@@ -241,9 +214,7 @@ st.subheader("📂 Upload Member Data for Bulk Rate Lookup")
 
 st.markdown(
     "Your Excel must have at least: **Name**, **Age**, **Sum Assured** (or **Loan "
-    "Outstanding** if Sum Assured isn't present), and either a **Tenure** column (in "
-    "years) or **Loan Start Date** + **Loan End Date** columns (Tenure will be "
-    "auto-calculated from the dates)."
+    "Outstanding** if Sum Assured isn't present), and a **Tenure** column (in years)."
 )
 
 st.caption(f"Each row uses its own Sum Assured from the Excel (must be between ₹{sa_min:,} and ₹{sa_max:,}).")
@@ -271,21 +242,9 @@ if uploaded_file is not None:
         tenure_col = find_column(df, "Tenure")
         sa_col = find_sum_assured_column(df)
 
-        # If no direct Tenure column, try deriving it from Start/End Date columns
-        if not tenure_col:
-            start_col, end_col = find_date_columns(df)
-            if start_col and end_col:
-                st.info(
-                    f"ℹ️ No Tenure column found — deriving Tenure in years from "
-                    f"'{start_col}' and '{end_col}'."
-                )
-                df["Tenure (Derived)"] = derive_tenure_years(df[start_col], df[end_col])
-                tenure_col = "Tenure (Derived)"
-
         if not name_col or not age_col or not tenure_col:
             raise ValueError(
-                "Excel must contain mandatory columns: Name, Age, and either Tenure "
-                "or (Loan Start Date + Loan End Date)."
+                "Excel must contain mandatory columns: Name, Age, and Tenure."
             )
         if not sa_col:
             raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured') or, failing that, a 'Loan Outstanding' column.")
@@ -310,8 +269,8 @@ if uploaded_file is not None:
                 r_tenure = int(row[tenure_col]) if pd.notna(row[tenure_col]) else None
                 r_sa = float(row[sa_col])
 
-                if r_age is None or r_age < 18 or r_age > 60:
-                    raise ValueError("Age must be between 18 and 60")
+                if r_age is None or r_age < 18 or r_age > 65:
+                    raise ValueError("Age must be between 18 and 65")
                 if r_tenure is None or r_tenure < min_t or r_tenure > max_t:
                     raise ValueError(f"Tenure must be between {min_t} and {max_t} yrs")
 
