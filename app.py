@@ -23,6 +23,8 @@ FILE_MAP = {
     ("Level",    "Joint Life",  "LAP"):       "LAP Joint Life.xlsx",
     ("Reducing", "Joint Life",  "Home Loan"): "Reducing- Homeloan.xlsx",
     ("Reducing", "Joint Life",  "LAP"):       "Reducing- LAP.xlsx",
+    ("Reducing", "Single Life", "Home Loan"): "Reducing- Single- Homeloan.xlsx",
+    ("Reducing", "Single Life", "LAP"):       "Reducing- Single- LAP.xlsx",
 }
 
 # GST is fixed and always applied on top of the Loader-adjusted rate.
@@ -126,10 +128,7 @@ with col1:
 with col2:
     loan_type = st.selectbox("Select Loan Type", ["Home Loan", "LAP"])
 
-if life_type == "Joint Life":
-    cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
-else:
-    cover_type = "Level"
+cover_type = st.selectbox("Select Type of Cover", ["Level", "Reducing"])
 
 # ============================================
 # SHARED LOADER % — applied to every rate (Manual + Bulk)
