@@ -21,8 +21,6 @@ FILE_MAP = {
     ("Level",    "Single Life", "LAP"):       "LAP Single Life.xlsx",
     ("Level",    "Joint Life",  "Home Loan"): "Homeloan Joint Life.xlsx",
     ("Level",    "Joint Life",  "LAP"):       "LAP Joint Life.xlsx",
-    ("Reducing", "Single Life", "Home Loan"): "Reducing- Homeloan.xlsx",
-    ("Reducing", "Single Life", "LAP"):       "Reducing- LAP.xlsx",
     ("Reducing", "Joint Life",  "Home Loan"): "Reducing- Homeloan.xlsx",
     ("Reducing", "Joint Life",  "LAP"):       "Reducing- LAP.xlsx",
 }
@@ -102,18 +100,18 @@ def find_column(df, target):
 
 def find_sum_assured_column(df):
     """
-    Flexibly detect a Loan Outstanding (Loan O/S) column first — this takes
-    priority whenever present. Falls back to Sum Assured / Sum Insured /
-    Loan Amount only if no Loan Outstanding-type column is found.
+    Flexibly detect a Sum Assured / Sum Insured / Loan Amount column first —
+    this takes priority whenever present. Falls back to Loan Outstanding
+    (Loan O/S) only if no Sum Assured-type column is found.
     """
+    for col in df.columns:
+        norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
+        if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
+            return col
     for col in df.columns:
         norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
         if ('loanoutstanding' in norm or 'outstandingamount' in norm or 'outstandingloan' in norm
                 or norm == 'outstanding' or 'loanos' in norm or norm == 'os'):
-            return col
-    for col in df.columns:
-        norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
-        if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
             return col
     return None
 
