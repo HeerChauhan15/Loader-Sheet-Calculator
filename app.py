@@ -100,22 +100,23 @@ def find_column(df, target):
     return None
 
 
-def find_sum_assured_column(df):
+def find_sum_assured_columns(df):
     """
-    Flexibly detect a Sum Assured / Sum Insured column first — this takes
-    priority whenever present. Falls back to Loan Outstanding only if no
-    Sum Assured-type column is found.
+    Detects the Sum Assured/Sum Insured column AND the Loan Outstanding column
+    (if both are present). Per-row logic then uses Sum Assured when that row
+    has a value, and falls back to Loan Outstanding for that row only when
+    Sum Assured is blank/missing.
     """
+    sa_col = None
+    lo_col = None
     for col in df.columns:
         norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
-        if 'sumassured' in norm or 'suminsured' in norm:
-            return col
-    for col in df.columns:
-        norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
-        if ('loanoutstanding' in norm or 'outstandingamount' in norm or 'outstandingloan' in norm
+        if sa_col is None and ('sumassured' in norm or 'suminsured' in norm):
+            sa_col = col
+        if lo_col is None and ('loanoutstanding' in norm or 'outstandingamount' in norm or 'outstandingloan' in norm
                 or norm == 'outstanding' or 'loanos' in norm or norm == 'os'):
-            return col
-    return None
+            lo_col = col
+    return sa_col, lo_col
 
 
 # ============================================
@@ -239,18 +240,21 @@ if uploaded_file is not None:
         name_col = find_column(df, "Name")
         age_col = find_column(df, "Age")
         tenure_col = find_column(df, "Tenure")
-        sa_col = find_sum_assured_column(df)
+        sa_col, lo_col = find_sum_assured_columns(df)
 
         if not name_col or not age_col or not tenure_col:
             raise ValueError(
                 "Excel must contain mandatory columns: Name, Age, and Tenure."
             )
-        if not sa_col:
+        if not sa_col and not lo_col:
             raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured') or, failing that, a 'Loan Outstanding' column.")
 
         df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
         df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
-        df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
+        if sa_col:
+            df[sa_col] = pd.to_numeric(df[sa_col], errors='coerce')
+        if lo_col:
+            df[lo_col] = pd.to_numeric(df[lo_col], errors='coerce')
 
         if df[tenure_col].dropna().median() > 30:
             st.info("ℹ️ Tenure values look like months — auto-converting to years.")
@@ -262,11 +266,22 @@ if uploaded_file is not None:
 
         premiums = []
         statuses = []
+        sa_used_list = []
         for idx, row in df.iterrows():
             try:
                 r_age = int(row[age_col]) if pd.notna(row[age_col]) else None
                 r_tenure = int(row[tenure_col]) if pd.notna(row[tenure_col]) else None
-                r_sa = float(row[sa_col])
+
+                # Per-row: use Sum Assured if this row has it; otherwise fall back
+                # to Loan Outstanding for this row.
+                r_sa = None
+                if sa_col and pd.notna(row[sa_col]):
+                    r_sa = float(row[sa_col])
+                elif lo_col and pd.notna(row[lo_col]):
+                    r_sa = float(row[lo_col])
+
+                if r_sa is None:
+                    raise ValueError("Sum Assured / Loan Outstanding value missing")
 
                 if r_age is None or r_age < 18 or r_age > 65:
                     raise ValueError("Age must be between 18 and 65")
@@ -278,14 +293,18 @@ if uploaded_file is not None:
                 premium = round(r_final * (r_sa / 100000), 2)
                 premiums.append(premium)
                 statuses.append("✅")
+                sa_used_list.append(r_sa)
             except Exception as e:
                 premiums.append(None)
                 statuses.append(f"❌ {e}")
+                sa_used_list.append(None)
 
+        df["Sum Assured Used"] = sa_used_list
         df["Premium"] = premiums
         df["Status"] = statuses
 
-        core_cols = [name_col, age_col, tenure_col, sa_col, "Premium"]
+        display_sa_col = sa_col if sa_col else lo_col
+        core_cols = [name_col, age_col, tenure_col, display_sa_col, "Sum Assured Used", "Premium"]
         extra_cols = [c for c in df.columns if c not in core_cols]
         df = df[core_cols + extra_cols]
 
