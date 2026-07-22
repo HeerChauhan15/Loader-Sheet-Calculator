@@ -100,13 +100,13 @@ def find_column(df, target):
 
 def find_sum_assured_column(df):
     """
-    Flexibly detect a Sum Assured / Sum Insured / Loan Amount column first —
-    this takes priority whenever present. Falls back to Loan Outstanding
-    (Loan O/S) only if no Sum Assured-type column is found.
+    Flexibly detect a Sum Assured / Sum Insured column first — this takes
+    priority whenever present. Falls back to Loan Outstanding only if no
+    Sum Assured-type column is found.
     """
     for col in df.columns:
         norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
-        if 'sumassured' in norm or 'suminsured' in norm or 'loanamount' in norm:
+        if 'sumassured' in norm or 'suminsured' in norm:
             return col
     for col in df.columns:
         norm = re.sub(r'[\s_\-/]+', '', str(col).lower())
@@ -288,7 +288,7 @@ if uploaded_file is not None:
                 "or (Loan Start Date + Loan End Date)."
             )
         if not sa_col:
-            raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured', 'Loan Amount') or, failing that, a 'Loan Outstanding' column.")
+            raise ValueError("Excel must contain a Sum Assured column (e.g. 'Sum Assured', 'Sum Insured') or, failing that, a 'Loan Outstanding' column.")
 
         df[age_col] = pd.to_numeric(df[age_col], errors='coerce')
         df[tenure_col] = pd.to_numeric(df[tenure_col], errors='coerce')
