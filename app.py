@@ -21,10 +21,10 @@ FILE_MAP = {
     ("Level",    "Single Life", "LAP"):       "LAP Single Life.xlsx",
     ("Level",    "Joint Life",  "Home Loan"): "Homeloan Joint Life.xlsx",
     ("Level",    "Joint Life",  "LAP"):       "LAP Joint Life.xlsx",
+    ("Reducing", "Single Life", "Home Loan"): "REDUCING- HL- single.xlsx",
+    ("Reducing", "Single Life", "LAP"):       "REDUCING- LAP- single.xlsx",
     ("Reducing", "Joint Life",  "Home Loan"): "Reducing- Homeloan.xlsx",
     ("Reducing", "Joint Life",  "LAP"):       "Reducing- LAP.xlsx",
-    ("Reducing", "Single Life", "Home Loan"): "Reducing- Single- Homeloan.xlsx",
-    ("Reducing", "Single Life", "LAP"):       "Reducing- Single- LAP.xlsx",
 }
 
 # GST is fixed and always applied on top of the Loader-adjusted rate.
