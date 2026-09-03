@@ -164,7 +164,7 @@ st.divider()
 st.subheader("🔢 Manual Rate Lookup")
 
 if loan_type == "Home Loan":
-    min_tenure, max_tenure = 5, 25
+    min_tenure, max_tenure = 2, 25
 else:
     min_tenure, max_tenure = 2, 10
 
@@ -231,7 +231,7 @@ if uploaded_file is not None:
         st.dataframe(df.head())
 
         if loan_type == "Home Loan":
-            min_t, max_t = 5, 25
+            min_t, max_t = 2, 25
         else:
             min_t, max_t = 2, 10
 
